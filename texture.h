@@ -12,4 +12,5 @@ struct Texture {
     int height = 0;
     int channels = 0;
     ColorFormat format = ColorFormat::RGBA;
+    bool isValid() const { return pixels != nullptr; }
 };
