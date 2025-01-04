@@ -1,9 +1,9 @@
-#include "renderer.h"
+#include "glfw_renderer.h"
 #include <iostream>
 
-Renderer::Renderer() : window(nullptr), shaderProgram(0), VBO(0), VAO(0), EBO(0), texture(0) {}
+GLFWRenderer::GLFWRenderer() : window(nullptr), shaderProgram(0), VBO(0), VAO(0), EBO(0), texture(0) {}
 
-Renderer::~Renderer() {
+GLFWRenderer::~GLFWRenderer() {
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
@@ -12,7 +12,7 @@ Renderer::~Renderer() {
     glfwTerminate();
 }
 
-GLFWmonitor* Renderer::getTargetMonitor(int monitorIndex) {
+GLFWmonitor* GLFWRenderer::getTargetMonitor(int monitorIndex) {
     int monitorCount;
     GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
     
@@ -29,7 +29,7 @@ GLFWmonitor* Renderer::getTargetMonitor(int monitorIndex) {
     return monitors[monitorIndex];
 }
 
-bool Renderer::init(int width, int height, const char* title, bool fullscreen, int monitorIndex) {
+bool GLFWRenderer::init(int width, int height, const char* title, bool fullscreen, int monitorIndex) {
     if (!initGLFW()) return false;
     
     GLFWmonitor* monitor = nullptr;
@@ -64,7 +64,7 @@ bool Renderer::init(int width, int height, const char* title, bool fullscreen, i
     return true;
 }
 
-void Renderer::render(const Texture& texture) {
+void GLFWRenderer::render(const Texture& texture) {
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(shaderProgram);
     glUniform1i(colorFormatLocation, static_cast<int>(texture.format));
@@ -80,16 +80,16 @@ void Renderer::render(const Texture& texture) {
     glfwPollEvents();
 }
 
-bool Renderer::shouldClose() {
+bool GLFWRenderer::shouldClose() const {
     return glfwWindowShouldClose(window);
 }
 
-void Renderer::processInput() {
+void GLFWRenderer::processInput() {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 }
 
-bool Renderer::initGLFW() {
+bool GLFWRenderer::initGLFW() {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return false;
@@ -108,7 +108,7 @@ bool Renderer::initGLFW() {
     return true;
 }
 
-bool Renderer::initGLAD() {
+bool GLFWRenderer::initGLAD() {
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return false;
@@ -116,7 +116,7 @@ bool Renderer::initGLAD() {
     return true;
 }
 
-bool Renderer::createShaders() {
+bool GLFWRenderer::createShaders() {
     std::vector<char> vertexShaderCode = loader.LoadShader("vertex.glsl");
     std::vector<char> fragmentShaderCode = loader.LoadShader("fragment.glsl");
     
@@ -172,7 +172,7 @@ bool Renderer::createShaders() {
     return true;
 }
 
-bool Renderer::setupBuffers() {
+bool GLFWRenderer::setupBuffers() {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);

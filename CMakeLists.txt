@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.29)
+cmake_minimum_required(VERSION 3.28)
 project(rendermatic)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -36,20 +36,38 @@ if(NOT glad_POPULATED)
     add_subdirectory(${glad_SOURCE_DIR} ${glad_BINARY_DIR})
 endif()
 
-# Add executable
-add_executable(${PROJECT_NAME} 
+# Find DirectFB (for Linux systems)
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(DirectFB IMPORTED_TARGET directfb)
+endif()
+
+# Add executable with conditional sources
+set(SOURCES
     main.cpp
     loader.cpp
-    renderer.cpp
     ndireceiver.cpp
 )
 
-# Link libraries
+if(DirectFB_FOUND)
+    list(APPEND SOURCES dfb_renderer.cpp)
+    add_compile_definitions(HAVE_DIRECTFB)
+endif()
+
+list(APPEND SOURCES glfw_renderer.cpp)
+
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Link libraries with conditional DirectFB
 target_link_libraries(${PROJECT_NAME} 
     PRIVATE
     glfw
     glad
 )
+
+if(DirectFB_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::DirectFB)
+endif()
 
 # Include directories
 target_include_directories(${PROJECT_NAME} 
