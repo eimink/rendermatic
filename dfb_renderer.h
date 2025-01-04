@@ -22,7 +22,6 @@ private:
     IDirectFB* m_dfb = nullptr;
     IDirectFBSurface* m_primary = nullptr;
     IDirectFBGL* m_gl = nullptr;
-    IDirectFBGL* m_glContext = nullptr;
     bool m_shouldClose = false;
     
     // OpenGL resources

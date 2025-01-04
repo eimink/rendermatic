@@ -50,8 +50,8 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
 
     // Create primary surface with OpenGL capabilities
     DFBSurfaceDescription desc;
-    desc.flags = DSDESC_CAPS | DSDESC_WIDTH | DSDESC_HEIGHT;
-    desc.caps = DSCAPS_PRIMARY | DSCAPS_GL;
+    desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_CAPS | DSDESC_WIDTH | DSDESC_HEIGHT);
+    desc.caps = (DFBSurfaceCapabilities)(DSCAPS_PRIMARY | DSCAPS_OPENGL);
     desc.width = width;
     desc.height = height;
 
@@ -62,22 +62,25 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     }
 
     // Get OpenGL interface
-    result = m_primary->GetGL(m_primary, &m_gl);
+    DFBGLAttributes glAttributes;
+    glAttributes.flags = (DFBGLAttributeFlags)(DGALF_ALPHA | DGALF_DEPTH);
+    glAttributes.alpha_size = 8;
+    glAttributes.depth_size = 24;
+
+    result = m_primary->GetGL(m_primary, &m_gl, &glAttributes);
     if (result != DFB_OK) {
         std::cerr << "Failed to get OpenGL interface: " << DirectFBErrorString(result) << std::endl;
         return false;
     }
 
-    // Create OpenGL context
-    result = m_gl->CreateContext(m_gl, NULL, &m_glContext);
-    if (result != DFB_OK) {
-        std::cerr << "Failed to create OpenGL context: " << DirectFBErrorString(result) << std::endl;
+    // Initialize OpenGL context
+    if (!m_gl->Lock(m_gl)) {
+        std::cerr << "Failed to lock GL surface" << std::endl;
         return false;
     }
 
-    m_glContext->Bind(m_glContext);
-
     if (!initGL()) {
+        m_gl->Unlock(m_gl);
         return false;
     }
 
@@ -102,6 +105,11 @@ void DirectFBRenderer::processInput() {
 }
 
 void DirectFBRenderer::render(const Texture& texture) {
+    if (!m_gl->Lock(m_gl)) {
+        std::cerr << "Failed to lock GL surface for rendering" << std::endl;
+        return;
+    }
+
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(m_shader);
@@ -114,7 +122,8 @@ void DirectFBRenderer::render(const Texture& texture) {
     glBindVertexArray(m_vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     
-    m_gl->SwapBuffers(m_gl);
+    m_gl->Unlock(m_gl);
+    m_primary->Flip(m_primary, NULL, DSFLIP_WAITFORSYNC);
 }
 
 bool DirectFBRenderer::shouldClose() const {
