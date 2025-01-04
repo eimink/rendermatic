@@ -28,7 +28,6 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     DFBResult result;
     
     // Initialize DirectFB with OpenGL support
-    DFBGraphicsDeviceDescription gdesc;
     result = DirectFBInit(nullptr, nullptr);
     if (result != DFB_OK) {
         std::cerr << "Failed to initialize DirectFB: " << DirectFBErrorString(result) << std::endl;
@@ -50,7 +49,7 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     // Create primary surface with OpenGL capabilities
     DFBSurfaceDescription desc;
     desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_CAPS | DSDESC_WIDTH | DSDESC_HEIGHT);
-    desc.caps = (DFBSurfaceCapabilities)(DSCAPS_PRIMARY | DSCAPS_OPENGL);
+    desc.caps = (DFBSurfaceCapabilities)(DSCAPS_PRIMARY | DSCAPS_GL);
     desc.width = width;
     desc.height = height;
 
@@ -61,12 +60,7 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     }
 
     // Get OpenGL interface
-    DFBGLAttributes glAttributes;
-    glAttributes.flags = (DFBGLAttributeFlags)(DGALF_ALPHA | DGALF_DEPTH);
-    glAttributes.alpha_size = 8;
-    glAttributes.depth_size = 24;
-
-    result = m_primary->GetGL(m_primary, &m_gl, &glAttributes);
+    result = m_primary->GetGL(m_primary, &m_gl);
     if (result != DFB_OK) {
         std::cerr << "Failed to get OpenGL interface: " << DirectFBErrorString(result) << std::endl;
         return false;
@@ -84,6 +78,7 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     }
 
     setupGLState();
+    m_gl->Unlock(m_gl);
     return true;
 }
 
