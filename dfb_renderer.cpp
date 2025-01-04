@@ -3,7 +3,7 @@
 #include <iostream>
 #include <glad/glad.h>
 
-DirectFBRenderer::DirectFBRenderer() : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), m_gl(nullptr), m_glContext(nullptr), m_shader(0), m_vao(0), m_vbo(0), m_ebo(0), m_texture(0) {}
+DirectFBRenderer::DirectFBRenderer() : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), m_gl(nullptr), m_shader(0), m_vao(0), m_vbo(0), m_ebo(0), m_texture(0) {}
 
 DirectFBRenderer::~DirectFBRenderer() {
     if (m_gl) {
@@ -12,7 +12,6 @@ DirectFBRenderer::~DirectFBRenderer() {
         glDeleteBuffers(1, &m_vbo);
         glDeleteBuffers(1, &m_ebo);
         glDeleteTextures(1, &m_texture);
-        m_glContext->Release(m_glContext);
         m_gl->Release(m_gl);
     }
     if (m_primary) {
