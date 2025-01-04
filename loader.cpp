@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <format>
 #include <iostream>
+#include <cstring>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"

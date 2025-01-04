@@ -36,10 +36,16 @@ if(NOT glad_POPULATED)
     add_subdirectory(${glad_SOURCE_DIR} ${glad_BINARY_DIR})
 endif()
 
-# Find DirectFB (for Linux systems)
+# Find DirectFB2 (for Linux systems)
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(DirectFB IMPORTED_TARGET directfb)
+    pkg_check_modules(DirectFB2 directfb2)
+    if(NOT DirectFB2_FOUND)
+        message(STATUS "DirectFB2 not found. To install, clone https://github.com/directfb2/DirectFB2.git and build with:\n"
+                      "meson setup build\n"
+                      "meson compile -C build\n"
+                      "sudo meson install -C build")
+    endif()
 endif()
 
 # Add executable with conditional sources
@@ -49,9 +55,12 @@ set(SOURCES
     ndireceiver.cpp
 )
 
-if(DirectFB_FOUND)
+if(DirectFB2_FOUND)
     list(APPEND SOURCES dfb_renderer.cpp)
     add_compile_definitions(HAVE_DIRECTFB)
+    # Ensure GLAD is built with DirectFB support
+    set(GLAD_GL_IMPLEMENTATION "gl")
+    set(GLAD_EGL_IMPLEMENTATION "egl")
 endif()
 
 list(APPEND SOURCES glfw_renderer.cpp)
@@ -65,8 +74,9 @@ target_link_libraries(${PROJECT_NAME}
     glad
 )
 
-if(DirectFB_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE PkgConfig::DirectFB)
+if(DirectFB2_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${DirectFB2_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${DirectFB2_INCLUDE_DIRS})
 endif()
 
 # Include directories

@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <cstdlib>
+#include <cstdint>
 
 const std::string SHADER_PATH = "shaders/";
 const std::string TEXTURE_PATH = "textures/";
