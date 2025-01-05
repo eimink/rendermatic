@@ -58,6 +58,7 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         for (const auto& texture : textureManager.getAvailableTextures()) {
             response["textures"].append(texture);
         }
+        response["success"] = true;
     }
     else if (command == "load_texture") {
         std::string textureName = root["texture"].asString();
@@ -70,6 +71,11 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         bool success = textureManager.setCurrentTexture(textureName);
         response["command"] = "set_texture_response";
         response["success"] = success;
+    }
+    else {
+        response["command"] = "error";
+        response["message"] = "Unknown command";
+        response["success"] = false;
     }
 
     Json::FastWriter writer;
