@@ -8,4 +8,8 @@ public:
     virtual void processInput() = 0;
     virtual void render(const Texture& texture) = 0;
     virtual bool shouldClose() const = 0;
+    virtual void setFullscreenScaling(bool enabled) { m_fullscreenScaling = enabled; }
+
+protected:
+    bool m_fullscreenScaling = false;
 };

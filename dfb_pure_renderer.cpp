@@ -115,8 +115,22 @@ void DirectFBPureRenderer::render(const Texture& texture) {
 
     m_texture->Unlock(m_texture);
 
-    DFBRectangle rect = { 0, 0, (int)texture.width, (int)texture.height };
-    m_primary->Blit(m_primary, m_texture, &rect, 0, 0);
+    // Calculate scaling and position
+    DFBRectangle srcRect = { 0, 0, (int)texture.width, (int)texture.height };
+    DFBRectangle dstRect;
+    
+    if (m_fullscreenScaling) {
+        // Scale to full screen
+        dstRect = { 0, 0, m_width, m_height };
+    } else {
+        // Center without scaling
+        dstRect = { (m_width - texture.width) / 2, 
+                   (m_height - texture.height) / 2,
+                   (int)texture.width, 
+                   (int)texture.height };
+    }
+
+    m_primary->StretchBlit(m_primary, m_texture, &srcRect, &dstRect);
     m_primary->Flip(m_primary, nullptr, DSFLIP_WAITFORSYNC);
 }
 

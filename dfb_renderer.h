@@ -34,6 +34,7 @@ private:
     Loader m_loader;
     int m_width, m_height;
     int m_colorFormatLocation;
+    int m_scalingLocation;
 
     // Vertex data
     float m_vertices[20] = {

@@ -3,7 +3,7 @@
 #include <iostream>
 #include <glad/glad.h>
 
-DirectFBRenderer::DirectFBRenderer() : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), m_gl(nullptr), m_shader(0), m_vao(0), m_vbo(0), m_ebo(0), m_texture(0) {}
+DirectFBRenderer::DirectFBRenderer() : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), m_gl(nullptr), m_shader(0), m_vao(0), m_vbo(0), m_ebo(0), m_texture(0), m_fullscreenScaling(false) {}
 
 DirectFBRenderer::~DirectFBRenderer() {
     if (m_gl) {
@@ -108,6 +108,7 @@ void DirectFBRenderer::render(const Texture& texture) {
 
     glUseProgram(m_shader);
     glUniform1i(m_colorFormatLocation, static_cast<int>(texture.format));
+    glUniform1i(m_scalingLocation, m_fullscreenScaling ? 1 : 0);
     
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width, texture.height, 
@@ -130,11 +131,25 @@ bool DirectFBRenderer::initGL() {
         return false;
     }
 
-    // Create and compile shaders
-    std::vector<char> vertexShaderCode = m_loader.LoadShader("vertex.glsl");
+    // Create and compile shaders with scaling support
+    const char* vertexShaderSource = R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec2 aTexCoord;
+        uniform bool fullscreenScaling;
+        out vec2 TexCoord;
+        
+        void main() {
+            vec3 pos = aPos;
+            if (fullscreenScaling) {
+                pos = vec3(aPos.x * 2.0, aPos.y * 2.0, aPos.z);
+            }
+            gl_Position = vec4(pos, 1.0);
+            TexCoord = aTexCoord;
+        }
+    )";
+
     std::vector<char> fragmentShaderCode = m_loader.LoadShader("fragment.glsl");
-    
-    const char* vertexShaderSource = vertexShaderCode.data();
     const char* fragmentShaderSource = fragmentShaderCode.data();
 
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -180,8 +195,9 @@ bool DirectFBRenderer::initGL() {
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    // Get uniform location
+    // Get uniform locations
     m_colorFormatLocation = glGetUniformLocation(m_shader, "colorFormat");
+    m_scalingLocation = glGetUniformLocation(m_shader, "fullscreenScaling");
 
     // Setup buffers
     glGenVertexArrays(1, &m_vao);

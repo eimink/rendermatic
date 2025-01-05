@@ -8,16 +8,18 @@
 #include <iostream>
 
 void printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [-w] [-m monitor_index] [-n] [-b backend] [-r width height]\n"
+    std::cout << "Usage: " << programName << " [-w] [-m monitor_index] [-n] [-b backend] [-r width height] [-f]\n"
               << "  -w            : Launch in windowed mode\n"
               << "  -m <index>    : Specify monitor index (default: 0)\n"
               << "  -n            : Enable NDI mode\n"
               << "  -b <backend>  : Rendering backend (glfw/dfb/dfb-pure, default: glfw)\n"
-              << "  -r <w> <h>    : Set resolution (default: " << WIDTH << "x" << HEIGHT << ")\n";
+              << "  -r <w> <h>    : Set resolution (default: " << WIDTH << "x" << HEIGHT << ")\n"
+              << "  -f            : Enable fullscreen scaling\n";
 }
 
 int main(int argc, char* argv[]) {
     bool fullscreen = true;
+    bool fullscreenScaling = false;
     int monitorIndex = 0;
     bool ndiMode = false;
     std::string backend = "glfw";
@@ -42,6 +44,8 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Invalid resolution: " << width << "x" << height << std::endl;
                 return -1;
             }
+        } else if (arg == "-f") {
+            fullscreenScaling = true;
         } else if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
             return 0;
@@ -81,6 +85,7 @@ int main(int argc, char* argv[]) {
     if (!renderer->init(width, height, "Display", fullscreen, monitorIndex)) {
         return -1;
     }
+    renderer->setFullscreenScaling(fullscreenScaling);
 
     // Load default texture for image mode
     Texture displayTexture = loader.LoadTexture("safety_cat_ears.png", ColorFormat::RGBA);
