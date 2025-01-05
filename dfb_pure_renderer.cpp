@@ -89,7 +89,30 @@ void DirectFBPureRenderer::render(const Texture& texture) {
         }
     }
 
-    m_texture->Lock(m_texture, DSLF_WRITE, (void**)&texture.pixels, nullptr);
+    void* dest;
+    int pitch;
+    if (m_texture->Lock(m_texture, DSLF_WRITE, &dest, &pitch) != DFB_OK) {
+        std::cerr << "Failed to lock texture surface" << std::endl;
+        return;
+    }
+
+    // Convert RGBA to ARGB
+    uint32_t* destPixels = static_cast<uint32_t*>(dest);
+    const uint32_t* srcPixels = reinterpret_cast<const uint32_t*>(texture.pixels);
+    
+    for (int y = 0; y < texture.height; ++y) {
+        for (int x = 0; x < texture.width; ++x) {
+            uint32_t rgba = srcPixels[y * texture.width + x];
+            // RGBA (input) = [RR GG BB AA]
+            // ARGB (output) = [AA RR GG BB]
+            uint32_t argb = (rgba << 24) |               // Alpha to top
+                           ((rgba >> 8) & 0x00FF0000) |  // Red
+                           ((rgba >> 8) & 0x0000FF00) |  // Green
+                           ((rgba >> 8) & 0x000000FF);   // Blue
+            destPixels[y * (pitch/4) + x] = argb;
+        }
+    }
+
     m_texture->Unlock(m_texture);
 
     DFBRectangle rect = { 0, 0, (int)texture.width, (int)texture.height };
