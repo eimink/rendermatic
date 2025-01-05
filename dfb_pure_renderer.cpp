@@ -81,7 +81,7 @@ void DirectFBPureRenderer::render(const Texture& texture) {
         desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_WIDTH | DSDESC_HEIGHT | DSDESC_PIXELFORMAT);
         desc.width = texture.width;
         desc.height = texture.height;
-        desc.pixelformat = DSPF_ABGR;  // Changed from ARGB to ABGR
+        desc.pixelformat = DSPF_RGBA;  // Changed to match input format
 
         if (m_dfb->CreateSurface(m_dfb, &desc, &m_texture) != DFB_OK) {
             std::cerr << "Failed to create texture surface" << std::endl;
@@ -96,21 +96,14 @@ void DirectFBPureRenderer::render(const Texture& texture) {
         return;
     }
 
-    // Convert RGBA to ABGR
-    uint32_t* destPixels = static_cast<uint32_t*>(dest);
+    // Direct pixel copy without conversion
     const uint32_t* srcPixels = reinterpret_cast<const uint32_t*>(texture.pixels);
+    uint32_t* destPixels = static_cast<uint32_t*>(dest);
     
     for (int y = 0; y < texture.height; ++y) {
-        for (int x = 0; x < texture.width; ++x) {
-            uint32_t rgba = srcPixels[y * texture.width + x];
-            // RGBA (input) = [RR GG BB AA]
-            // ABGR (output) = [AA BB GG RR]
-            uint32_t abgr = (rgba << 24) |               // Alpha to top
-                           ((rgba & 0x00FF0000) >> 16) | // Red to bottom
-                           (rgba & 0x0000FF00) |         // Green stays
-                           ((rgba & 0x000000FF) << 16);  // Blue to top
-            destPixels[y * (pitch/4) + x] = abgr;
-        }
+        memcpy(&destPixels[y * (pitch/4)], 
+               &srcPixels[y * texture.width], 
+               texture.width * sizeof(uint32_t));
     }
 
     m_texture->Unlock(m_texture);
