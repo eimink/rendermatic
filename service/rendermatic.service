@@ -5,12 +5,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=viima
 WorkingDirectory=/rendermatic
 ExecStart=/rendermatic/rendermatic
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
+# Root-specific security settings
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
 
 [Install]
 WantedBy=graphical.target
