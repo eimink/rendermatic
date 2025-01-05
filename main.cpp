@@ -11,7 +11,7 @@ void printUsage(const char* programName) {
               << "  -w            : Launch in windowed mode\n"
               << "  -m <index>    : Specify monitor index (default: 0)\n"
               << "  -n            : Enable NDI mode\n"
-              << "  -b <backend>  : Rendering backend (glfw/dfb, default: glfw)\n";
+              << "  -b <backend>  : Rendering backend (glfw/dfb/dfb-pure, default: glfw)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -47,8 +47,20 @@ int main(int argc, char* argv[]) {
         std::cerr << "DirectFB support not compiled in" << std::endl;
         return -1;
 #endif
+    } else if (backend == "dfb-pure") {
+#ifdef HAVE_DIRECTFB
+        renderer = std::make_unique<DirectFBPureRenderer>();
+#else
+        std::cerr << "Pure DirectFB support not compiled in" << std::endl;
+        return -1;
+#endif
     } else {
         std::cerr << "Unknown backend: " << backend << std::endl;
+        std::cerr << "Available backends: glfw";
+#ifdef HAVE_DIRECTFB
+        std::cerr << ", dfb, dfb-pure";
+#endif
+        std::cerr << std::endl;
         return -1;
     }
 

@@ -47,12 +47,12 @@ if(UNIX AND NOT APPLE)
                       "sudo meson install -C build")
     else()
         message(STATUS "DirectFB include dirs: ${DirectFB_INCLUDE_DIRS}")
-        # Verify directfb.h exists in the include path
         find_file(DIRECTFB_HEADER "directfb.h" PATHS ${DirectFB_INCLUDE_DIRS})
         if(NOT DIRECTFB_HEADER)
             message(FATAL_ERROR "DirectFB headers not found in ${DirectFB_INCLUDE_DIRS}")
         else()
             message(STATUS "Found directfb.h at: ${DIRECTFB_HEADER}")
+            add_compile_definitions(HAVE_DIRECTFB)
         endif()
     endif()
 endif()
@@ -62,17 +62,18 @@ set(SOURCES
     main.cpp
     loader.cpp
     ndireceiver.cpp
+    glfw_renderer.cpp
 )
 
 if(DirectFB_FOUND)
-    list(APPEND SOURCES dfb_renderer.cpp)
-    add_compile_definitions(HAVE_DIRECTFB)
+    list(APPEND SOURCES 
+        dfb_renderer.cpp
+        dfb_pure_renderer.cpp
+    )
     # Ensure GLAD is built with DirectFB support
     set(GLAD_GL_IMPLEMENTATION "gl")
     set(GLAD_EGL_IMPLEMENTATION "egl")
 endif()
-
-list(APPEND SOURCES glfw_renderer.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
