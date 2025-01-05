@@ -1,0 +1,16 @@
+[Unit]
+Description=Rendermatic Graphics Application
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=viima
+WorkingDirectory=/rendermatic
+ExecStart=/rendermatic/rendermatic
+Restart=on-failure
+RestartSec=5
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=graphical.target
