@@ -72,6 +72,7 @@ set(SOURCES
     ndireceiver.cpp
     glfw_renderer.cpp
     config.cpp
+    texture_manager.cpp
 )
 
 if(DirectFB_FOUND)

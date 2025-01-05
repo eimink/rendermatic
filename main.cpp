@@ -5,6 +5,7 @@
 #include "loader.h"
 #include "config.h"
 #include "ndireceiver.h"
+#include "texture_manager.h"
 #include <iostream>
 
 int main(int argc, char* argv[]) {
@@ -38,16 +39,22 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    Loader loader;
     std::unique_ptr<NDIReceiver> ndiReceiver;
 
+    TextureManager textureManager;
+    textureManager.scanTextureDirectory();  // Scan current directory for textures
+    
     if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
         return -1;
     }
     renderer->setFullscreenScaling(config.fullscreenScaling);
 
     // Load default texture for image mode
-    Texture displayTexture = loader.LoadTexture("safety_cat_ears.jpg", ColorFormat::RGBA);
+    if (!textureManager.loadTexture("safety_cat_ears.jpg")) {
+        std::cerr << "Failed to load default texture" << std::endl;
+        return -1;
+    }
+    Texture* displayTexture = textureManager.getTexture("safety_cat_ears.jpg");
 
     if (config.ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
@@ -61,11 +68,11 @@ int main(int argc, char* argv[]) {
         if (config.ndiMode && ndiReceiver) {
             Texture currentFrame;
             if (ndiReceiver->getLatestFrame(currentFrame)) {
-                displayTexture = currentFrame;
+                *displayTexture = currentFrame;
             }
         }
 
-        renderer->render(displayTexture);
+        renderer->render(*displayTexture);
     }
 
     if (ndiReceiver) {
