@@ -1,8 +1,8 @@
 #include "websocket_server.h"
 #include <json/json.h>
 
-WebSocketServer::WebSocketServer(TextureManager& tm) 
-    : textureManager(tm), running(false) {
+WebSocketServer::WebSocketServer(TextureManager& tm, uint16_t port) 
+    : textureManager(tm), running(false), port(port) {
     server.clear_access_channels(websocketpp::log::alevel::all);
     server.init_asio();
     server.set_message_handler(bind(&WebSocketServer::onMessage, this, 
@@ -16,7 +16,7 @@ WebSocketServer::~WebSocketServer() {
 void WebSocketServer::start() {
     if (!running) {
         running = true;
-        server.listen(9002);
+        server.listen(port);
         serverThread = std::thread(&WebSocketServer::run, this);
     }
 }
@@ -52,7 +52,16 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
     std::string command = root["command"].asString();
     Json::Value response;
 
-    if (command == "list_textures") {
+    if (command == "scan_textures") {
+        textureManager.scanTextureDirectory();
+        response["command"] = "scan_textures_response";
+        response["textures"] = Json::arrayValue;
+        for (const auto& texture : textureManager.getAvailableTextures()) {
+            response["textures"].append(texture);
+        }
+        response["success"] = true;
+    }
+    else if (command == "list_textures") {
         response["command"] = "texture_list";
         response["textures"] = Json::arrayValue;
         for (const auto& texture : textureManager.getAvailableTextures()) {

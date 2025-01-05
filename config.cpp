@@ -18,6 +18,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.backend = root.get("backend", "glfw").asString();
                 config.width = root.get("width", 1920).asInt();
                 config.height = root.get("height", 1080).asInt();
+                config.wsPort = root.get("wsPort", 9002).asUInt();
             }
         }
     } catch (const std::exception& e) {

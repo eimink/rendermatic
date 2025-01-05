@@ -10,6 +10,7 @@ struct Configuration {
     std::string backend = "glfw";
     int width = 1920;
     int height = 1080;
+    uint16_t wsPort = 9002;  // Add WebSocket port configuration
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);

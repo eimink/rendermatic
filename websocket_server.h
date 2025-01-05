@@ -12,7 +12,7 @@ class WebSocketServer {
 public:
     using wsserver = websocketpp::server<websocketpp::config::asio>;
     
-    WebSocketServer(TextureManager& textureManager);
+    WebSocketServer(TextureManager& textureManager, uint16_t port = 9002);  // Add port parameter
     ~WebSocketServer();
     
     void start();
@@ -26,4 +26,5 @@ private:
     std::thread serverThread;
     bool running;
     TextureManager& textureManager;
+    uint16_t port;  // Add port member
 };
