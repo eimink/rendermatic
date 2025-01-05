@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     renderer->setFullscreenScaling(fullscreenScaling);
 
     // Load default texture for image mode
-    Texture displayTexture = loader.LoadTexture("safety_cat_ears.png", ColorFormat::RGBA);
+    Texture displayTexture = loader.LoadTexture("safety_cat_ears.jpg", ColorFormat::RGBA);
 
     if (ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
