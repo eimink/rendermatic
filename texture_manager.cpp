@@ -48,6 +48,16 @@ Texture* TextureManager::getTexture(const std::string& name) {
     return nullptr;
 }
 
+bool TextureManager::setCurrentTexture(const std::string& name) {
+    Texture* texture = getTexture(name);
+    if (texture) {
+        currentTexture = texture;
+        currentTextureName = name;
+        return true;
+    }
+    return false;
+}
+
 std::vector<std::string> TextureManager::getAvailableTextures() const {
     return availableTextures;
 }

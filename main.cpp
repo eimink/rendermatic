@@ -6,6 +6,7 @@
 #include "config.h"
 #include "ndireceiver.h"
 #include "texture_manager.h"
+#include "websocket_server.h"
 #include <iostream>
 
 int main(int argc, char* argv[]) {
@@ -42,7 +43,12 @@ int main(int argc, char* argv[]) {
     std::unique_ptr<NDIReceiver> ndiReceiver;
 
     TextureManager textureManager;
+    std::string textureName;
     textureManager.scanTextureDirectory();  // Scan current directory for textures
+
+    // Initialize WebSocket server
+    WebSocketServer wsServer(textureManager);
+    wsServer.start();
     
     if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
         return -1;
@@ -50,11 +56,12 @@ int main(int argc, char* argv[]) {
     renderer->setFullscreenScaling(config.fullscreenScaling);
 
     // Load default texture for image mode
-    if (!textureManager.loadTexture("safety_cat_ears.jpg")) {
+    if (!textureManager.loadTexture("default.jpg")) {
         std::cerr << "Failed to load default texture" << std::endl;
         return -1;
     }
-    Texture* displayTexture = textureManager.getTexture("safety_cat_ears.jpg");
+    textureManager.setCurrentTexture("default.jpg");
+    Texture* displayTexture = textureManager.getCurrentTexture();
 
     if (config.ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
@@ -65,6 +72,11 @@ int main(int argc, char* argv[]) {
     while (!renderer->shouldClose()) {
         renderer->processInput();
         
+        if (textureManager.getCurrentTextureName() != textureName) {
+            displayTexture = textureManager.getCurrentTexture();
+            textureName = textureManager.getCurrentTextureName();
+        }
+
         if (config.ndiMode && ndiReceiver) {
             Texture currentFrame;
             if (ndiReceiver->getLatestFrame(currentFrame)) {
@@ -79,5 +91,7 @@ int main(int argc, char* argv[]) {
         ndiReceiver->stop();
     }
 
+    // Before return, stop WebSocket server
+    wsServer.stop();
     return 0;
 }

@@ -1,4 +1,5 @@
 #include "config.h"
+#include <json/json.h>
 #include <fstream>
 #include <iostream>
 
@@ -7,15 +8,17 @@ Configuration Configuration::loadFromFile(const std::string& path) {
     try {
         std::ifstream file(path);
         if (file.is_open()) {
-            nlohmann::json j;
-            file >> j;
-            config.fullscreen = j["fullscreen"];
-            config.fullscreenScaling = j["fullscreenScaling"];
-            config.monitorIndex = j["monitorIndex"];
-            config.ndiMode = j["ndiMode"];
-            config.backend = j["backend"];
-            config.width = j["width"];
-            config.height = j["height"];
+            Json::Value root;
+            Json::Reader reader;
+            if (reader.parse(file, root)) {
+                config.fullscreen = root.get("fullscreen", true).asBool();
+                config.fullscreenScaling = root.get("fullscreenScaling", false).asBool();
+                config.monitorIndex = root.get("monitorIndex", 0).asInt();
+                config.ndiMode = root.get("ndiMode", false).asBool();
+                config.backend = root.get("backend", "glfw").asString();
+                config.width = root.get("width", 1920).asInt();
+                config.height = root.get("height", 1080).asInt();
+            }
         }
     } catch (const std::exception& e) {
         std::cerr << "Error loading config: " << e.what() << std::endl;

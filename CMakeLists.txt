@@ -36,13 +36,34 @@ if(NOT glad_POPULATED)
     add_subdirectory(${glad_SOURCE_DIR} ${glad_BINARY_DIR})
 endif()
 
-# Fetch and configure nlohmann/json
-include(FetchContent)
+# Add ASIO first (before WebSocket++)
 FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
+    asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG asio-1-28-0
 )
-FetchContent_MakeAvailable(json)
+FetchContent_MakeAvailable(asio)
+
+# Add WebSocket++ and its dependencies
+find_package(Boost REQUIRED COMPONENTS system)
+FetchContent_Declare(
+    websocketpp
+    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
+    GIT_TAG 0.8.2
+)
+FetchContent_MakeAvailable(websocketpp)
+
+# Add JsonCpp using FetchContent
+FetchContent_Declare(
+    jsoncpp
+    GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
+    GIT_TAG 1.9.5
+)
+set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
+set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(JSONCPP_WITH_CMAKE_PACKAGE ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(jsoncpp)
 
 # Find DirectFB (for Linux systems)
 if(UNIX AND NOT APPLE)
@@ -73,6 +94,7 @@ set(SOURCES
     glfw_renderer.cpp
     config.cpp
     texture_manager.cpp
+    websocket_server.cpp
 )
 
 if(DirectFB_FOUND)
@@ -92,7 +114,8 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     glfw
     glad
-    nlohmann_json::nlohmann_json
+    jsoncpp_static
+    Boost::system
 )
 
 if(DirectFB_FOUND)
@@ -105,6 +128,10 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
     ${glad_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${websocketpp_SOURCE_DIR}
+    ${asio_SOURCE_DIR}/asio/include
+    ${jsoncpp_SOURCE_DIR}/include
+    ${jsoncpp_BINARY_DIR}/include
 )
 
 # Platform specific configurations
@@ -130,3 +157,9 @@ endif()
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
+target_compile_definitions(${PROJECT_NAME} 
+    PRIVATE 
+    ASIO_STANDALONE
+    _WEBSOCKETPP_CPP11_INTERNAL_
+)

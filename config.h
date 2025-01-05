@@ -1,22 +1,18 @@
 #pragma once
 #include <string>
 #include <cstdint>
-#include <nlohmann/json.hpp>
 
-class Configuration {
-public:
-    bool fullscreen;
-    bool fullscreenScaling;
-    int monitorIndex;
-    bool ndiMode;
-    std::string backend;
-    int width;
-    int height;
+struct Configuration {
+    bool fullscreen = true;
+    bool fullscreenScaling = false;
+    int monitorIndex = 0;
+    bool ndiMode = false;
+    std::string backend = "glfw";
+    int width = 1920;
+    int height = 1080;
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);
-    
-private:
     void printUsage(const char* programName);
 };
 
