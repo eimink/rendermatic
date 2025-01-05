@@ -3,7 +3,10 @@
 #include <iostream>
 #include <glad/glad.h>
 
-DirectFBRenderer::DirectFBRenderer() : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), m_gl(nullptr), m_shader(0), m_vao(0), m_vbo(0), m_ebo(0), m_texture(0), m_fullscreenScaling(false) {}
+DirectFBRenderer::DirectFBRenderer() 
+    : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), 
+      m_gl(nullptr), m_shader(0), m_vao(0), m_vbo(0), 
+      m_ebo(0), m_texture(0) {}
 
 DirectFBRenderer::~DirectFBRenderer() {
     if (m_gl) {
