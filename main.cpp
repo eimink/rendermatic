@@ -7,16 +7,6 @@
 #include "ndireceiver.h"
 #include <iostream>
 
-void printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [-w] [-m monitor_index] [-n] [-b backend] [-r width height] [-f]\n"
-              << "  -w            : Launch in windowed mode\n"
-              << "  -m <index>    : Specify monitor index (default: 0)\n"
-              << "  -n            : Enable NDI mode\n"
-              << "  -b <backend>  : Rendering backend (glfw/dfb/dfb-pure, default: glfw)\n"
-              << "  -r <w> <h>    : Set resolution (default: " << WIDTH << "x" << HEIGHT << ")\n"
-              << "  -f            : Enable fullscreen scaling\n";
-}
-
 int main(int argc, char* argv[]) {
     auto config = Configuration::loadFromFile();
     config.overrideFromCommandLine(argc, argv);
