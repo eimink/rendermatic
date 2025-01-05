@@ -5,7 +5,8 @@
 const std::string SHADER_PATH = "shaders/";
 const std::string TEXTURE_PATH = "textures/";
 
-constexpr uint32_t WIDTH = 1920;
-constexpr uint32_t HEIGHT = 1080;
+// Default display configuration
+constexpr uint32_t WIDTH = 1280;
+constexpr uint32_t HEIGHT = 800;
 
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;

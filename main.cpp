@@ -8,11 +8,12 @@
 #include <iostream>
 
 void printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [-w] [-m monitor_index] [-n] [-b backend]\n"
+    std::cout << "Usage: " << programName << " [-w] [-m monitor_index] [-n] [-b backend] [-r width height]\n"
               << "  -w            : Launch in windowed mode\n"
               << "  -m <index>    : Specify monitor index (default: 0)\n"
               << "  -n            : Enable NDI mode\n"
-              << "  -b <backend>  : Rendering backend (glfw/dfb/dfb-pure, default: glfw)\n";
+              << "  -b <backend>  : Rendering backend (glfw/dfb/dfb-pure, default: glfw)\n"
+              << "  -r <w> <h>    : Set resolution (default: " << WIDTH << "x" << HEIGHT << ")\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -20,6 +21,8 @@ int main(int argc, char* argv[]) {
     int monitorIndex = 0;
     bool ndiMode = false;
     std::string backend = "glfw";
+    int width = WIDTH;
+    int height = HEIGHT;
 
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
@@ -32,6 +35,13 @@ int main(int argc, char* argv[]) {
             ndiMode = true;
         } else if (arg == "-b" && i + 1 < argc) {
             backend = argv[++i];
+        } else if (arg == "-r" && i + 2 < argc) {
+            width = std::atoi(argv[++i]);
+            height = std::atoi(argv[++i]);
+            if (width <= 0 || height <= 0) {
+                std::cerr << "Invalid resolution: " << width << "x" << height << std::endl;
+                return -1;
+            }
         } else if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
             return 0;
@@ -68,12 +78,12 @@ int main(int argc, char* argv[]) {
     Loader loader;
     std::unique_ptr<NDIReceiver> ndiReceiver;
 
-    if (!renderer->init(WIDTH, HEIGHT, "Display", fullscreen, monitorIndex)) {
+    if (!renderer->init(width, height, "Display", fullscreen, monitorIndex)) {
         return -1;
     }
 
     // Load default texture for image mode
-    Texture displayTexture = loader.LoadTexture("safety_cat_ears.png", ColorFormat::UYVA);
+    Texture displayTexture = loader.LoadTexture("safety_cat_ears.png", ColorFormat::RGBA);
 
     if (ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
