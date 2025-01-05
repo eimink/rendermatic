@@ -36,6 +36,14 @@ if(NOT glad_POPULATED)
     add_subdirectory(${glad_SOURCE_DIR} ${glad_BINARY_DIR})
 endif()
 
+# Fetch and configure nlohmann/json
+include(FetchContent)
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
+
 # Find DirectFB (for Linux systems)
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
@@ -63,6 +71,7 @@ set(SOURCES
     loader.cpp
     ndireceiver.cpp
     glfw_renderer.cpp
+    config.cpp
 )
 
 if(DirectFB_FOUND)
@@ -82,6 +91,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     glfw
     glad
+    nlohmann_json::nlohmann_json
 )
 
 if(DirectFB_FOUND)
@@ -118,3 +128,4 @@ endif()
 # Copy shaders and textures to build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

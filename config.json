@@ -1,0 +1,9 @@
+{
+    "fullscreen": true,
+    "fullscreenScaling": true,
+    "monitorIndex": 0,
+    "ndiMode": false,
+    "backend": "glfw",
+    "width": 1920,
+    "height": 1080
+}

@@ -18,51 +18,20 @@ void printUsage(const char* programName) {
 }
 
 int main(int argc, char* argv[]) {
-    bool fullscreen = true;
-    bool fullscreenScaling = false;
-    int monitorIndex = 0;
-    bool ndiMode = false;
-    std::string backend = "glfw";
-    int width = WIDTH;
-    int height = HEIGHT;
-
-    // Parse command line arguments
-    for (int i = 1; i < argc; i++) {
-        std::string arg = argv[i];
-        if (arg == "-w") {
-            fullscreen = false;
-        } else if (arg == "-m" && i + 1 < argc) {
-            monitorIndex = std::atoi(argv[++i]);
-        } else if (arg == "-n") {
-            ndiMode = true;
-        } else if (arg == "-b" && i + 1 < argc) {
-            backend = argv[++i];
-        } else if (arg == "-r" && i + 2 < argc) {
-            width = std::atoi(argv[++i]);
-            height = std::atoi(argv[++i]);
-            if (width <= 0 || height <= 0) {
-                std::cerr << "Invalid resolution: " << width << "x" << height << std::endl;
-                return -1;
-            }
-        } else if (arg == "-f") {
-            fullscreenScaling = true;
-        } else if (arg == "-h" || arg == "--help") {
-            printUsage(argv[0]);
-            return 0;
-        }
-    }
+    auto config = Configuration::loadFromFile();
+    config.overrideFromCommandLine(argc, argv);
 
     std::unique_ptr<IRenderer> renderer;
-    if (backend == "glfw") {
+    if (config.backend == "glfw") {
         renderer = std::make_unique<GLFWRenderer>();
-    } else if (backend == "dfb") {
+    } else if (config.backend == "dfb") {
 #ifdef HAVE_DIRECTFB
         renderer = std::make_unique<DirectFBRenderer>();
 #else
         std::cerr << "DirectFB support not compiled in" << std::endl;
         return -1;
 #endif
-    } else if (backend == "dfb-pure") {
+    } else if (config.backend == "dfb-pure") {
 #ifdef HAVE_DIRECTFB
         renderer = std::make_unique<DirectFBPureRenderer>();
 #else
@@ -70,7 +39,7 @@ int main(int argc, char* argv[]) {
         return -1;
 #endif
     } else {
-        std::cerr << "Unknown backend: " << backend << std::endl;
+        std::cerr << "Unknown backend: " << config.backend << std::endl;
         std::cerr << "Available backends: glfw";
 #ifdef HAVE_DIRECTFB
         std::cerr << ", dfb, dfb-pure";
@@ -82,15 +51,15 @@ int main(int argc, char* argv[]) {
     Loader loader;
     std::unique_ptr<NDIReceiver> ndiReceiver;
 
-    if (!renderer->init(width, height, "Display", fullscreen, monitorIndex)) {
+    if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
         return -1;
     }
-    renderer->setFullscreenScaling(fullscreenScaling);
+    renderer->setFullscreenScaling(config.fullscreenScaling);
 
     // Load default texture for image mode
     Texture displayTexture = loader.LoadTexture("safety_cat_ears.jpg", ColorFormat::RGBA);
 
-    if (ndiMode) {
+    if (config.ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
         ndiReceiver->start();
     }
@@ -99,7 +68,7 @@ int main(int argc, char* argv[]) {
     while (!renderer->shouldClose()) {
         renderer->processInput();
         
-        if (ndiMode && ndiReceiver) {
+        if (config.ndiMode && ndiReceiver) {
             Texture currentFrame;
             if (ndiReceiver->getLatestFrame(currentFrame)) {
                 displayTexture = currentFrame;
