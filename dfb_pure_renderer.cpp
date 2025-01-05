@@ -81,7 +81,7 @@ void DirectFBPureRenderer::render(const Texture& texture) {
         desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_WIDTH | DSDESC_HEIGHT | DSDESC_PIXELFORMAT);
         desc.width = texture.width;
         desc.height = texture.height;
-        desc.pixelformat = DSPF_RGBA;  // Changed to match input format
+        desc.pixelformat = DSPF_ARGB;  // Changed to match input format
 
         if (m_dfb->CreateSurface(m_dfb, &desc, &m_texture) != DFB_OK) {
             std::cerr << "Failed to create texture surface" << std::endl;
