@@ -1,5 +1,6 @@
 #include "glfw_renderer.h"
 #include "dfb_renderer.h"
+#include "dfb_pure_renderer.h"
 #include "renderer.h"
 #include "loader.h"
 #include "config.h"
