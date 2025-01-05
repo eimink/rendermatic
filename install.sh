@@ -11,16 +11,17 @@ fi
 INSTALL_DIR="/rendermatic"
 BUILD_DIR="build"
 
+cd ${BUILD_DIR}
 # Install files
 echo "Installing files..."
 install -d ${INSTALL_DIR}/{bin,shaders,textures}
 install -m 755 bin/rendermatic ${INSTALL_DIR}/
-cp -r ../shaders/* ${INSTALL_DIR}/shaders/
-cp -r ../textures/* ${INSTALL_DIR}/textures/
-cp ../config.json ${INSTALL_DIR}/
+cp -r bin/shaders/* ${INSTALL_DIR}/shaders/
+cp -r bin/textures/* ${INSTALL_DIR}/textures/
+cp bin/config.json ${INSTALL_DIR}/
 
 # Install service file
-install -m 644 ../.vscode/service/rendermatic.service /etc/systemd/system/
+install -m 644 ../service/rendermatic.service /etc/systemd/system/
 
 # Set permissions
 chown -R root:root ${INSTALL_DIR}
