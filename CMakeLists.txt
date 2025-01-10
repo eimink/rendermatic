@@ -1,8 +1,19 @@
 cmake_minimum_required(VERSION 3.28)
 project(rendermatic)
 
+# Enforce C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)  # Use -std=c++20 instead of -std=gnu++20
+
+# Check if compiler supports C++20
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-std=c++20" COMPILER_SUPPORTS_CXX20)
+if(NOT COMPILER_SUPPORTS_CXX20)
+    message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} does not support C++20")
+endif()
+
+# Set output directory
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Only look for Wayland on Linux
@@ -189,9 +200,9 @@ endif()
 
 # Set compiler warnings
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+    target_compile_options(${PROJECT_NAME} PRIVATE /W4 /Zc:__cplusplus /std:c++20)
 else()
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -pedantic -std=c++20)
 endif()
 
 # Copy shaders and textures to build directory
