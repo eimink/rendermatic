@@ -117,6 +117,8 @@ if(UNIX AND NOT APPLE)
         else()
             message(STATUS "Found directfb.h at: ${DIRECTFB_HEADER}")
             add_compile_definitions(HAVE_DIRECTFB)
+            # Add definition to suppress register keyword warning
+            add_compile_definitions(register=)
         endif()
     endif()
 endif()
