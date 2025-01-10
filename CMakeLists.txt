@@ -40,6 +40,13 @@ if(UNIX AND NOT APPLE)
     endif()
 endif()
 
+# Try to find ECM first
+find_package(ECM QUIET)
+if(NOT ECM_FOUND)
+    message(STATUS "ECM not found. To install on Ubuntu/Debian: sudo apt-get install extra-cmake-modules")
+    message(STATUS "On other distributions, install the equivalent extra-cmake-modules package")
+endif()
+
 # Find or fetch GLFW with platform-appropriate settings
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
@@ -52,6 +59,12 @@ if(NOT glfw3_FOUND)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    
+    # Add ECM module path if found
+    if(ECM_FOUND)
+        list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+    endif()
+    
     FetchContent_MakeAvailable(glfw)
 endif()
 

@@ -1,6 +1,10 @@
 #include "glfw_renderer.h"
 #include <iostream>
 
+static void glfwErrorCallback(int error, const char* description) {
+    std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+}
+
 GLFWRenderer::GLFWRenderer() : window(nullptr), shaderProgram(0), VBO(0), VAO(0), EBO(0), texture(0) {}
 
 GLFWRenderer::~GLFWRenderer() {
@@ -90,10 +94,17 @@ void GLFWRenderer::processInput() {
 }
 
 bool GLFWRenderer::initGLFW() {
+    // Set error callback before initialization
+    glfwSetErrorCallback(glfwErrorCallback);
+
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return false;
     }
+
+    // Check OpenGL version support
+    const char* glVersion = (const char*)glGetString(GL_VERSION);
+    std::cout << "OpenGL Version: " << (glVersion ? glVersion : "unknown") << std::endl;
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -104,6 +115,18 @@ bool GLFWRenderer::initGLFW() {
         glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
         glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GLFW_TRUE);
     #endif
+
+    // Print available video modes for primary monitor
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    if (primaryMonitor) {
+        int count;
+        const GLFWvidmode* modes = glfwGetVideoModes(primaryMonitor, &count);
+        std::cout << "Available video modes:" << std::endl;
+        for (int i = 0; i < count; i++) {
+            std::cout << "  " << modes[i].width << "x" << modes[i].height 
+                     << " @ " << modes[i].refreshRate << "Hz" << std::endl;
+        }
+    }
 
     return true;
 }
