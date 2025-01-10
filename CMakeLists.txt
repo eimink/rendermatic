@@ -5,7 +5,31 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Find or fetch GLFW
+# Only look for Wayland on Linux
+if(UNIX AND NOT APPLE)
+    # Make Wayland optional
+    option(USE_WAYLAND "Enable Wayland support" ON)
+    
+    if(USE_WAYLAND)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(WAYLAND wayland-client wayland-egl)
+        pkg_check_modules(EGL egl)
+        pkg_check_modules(GLES glesv2)
+        
+        if(WAYLAND_FOUND AND EGL_FOUND AND GLES_FOUND)
+            set(HAVE_WAYLAND TRUE)
+            # Configure GLFW to use Wayland
+            set(GLFW_USE_WAYLAND ON CACHE BOOL "Use Wayland for window creation" FORCE)
+            set(GLFW_BUILD_X11 OFF CACHE BOOL "Build X11 support" FORCE)
+            add_compile_definitions(USE_WAYLAND)
+        else()
+            message(STATUS "Wayland or its dependencies not found, falling back to X11")
+            set(USE_WAYLAND OFF)
+        endif()
+    endif()
+endif()
+
+# Find or fetch GLFW with platform-appropriate settings
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
     include(FetchContent)
@@ -118,6 +142,19 @@ target_link_libraries(${PROJECT_NAME}
     Boost::system
 )
 
+if(HAVE_WAYLAND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        ${WAYLAND_LIBRARIES}
+        ${EGL_LIBRARIES}
+        ${GLES_LIBRARIES}
+    )
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${WAYLAND_INCLUDE_DIRS}
+        ${EGL_INCLUDE_DIRS}
+        ${GLES_INCLUDE_DIRS}
+    )
+endif()
+
 if(DirectFB_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${DirectFB_LIBRARIES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${DirectFB_INCLUDE_DIRS})
@@ -136,7 +173,11 @@ target_include_directories(${PROJECT_NAME}
 
 # Platform specific configurations
 if(UNIX AND NOT APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE GL dl)
+    if(NOT HAVE_WAYLAND)
+        target_link_libraries(${PROJECT_NAME} PRIVATE GL X11 dl)
+    else()
+        target_link_libraries(${PROJECT_NAME} PRIVATE dl)
+    endif()
 elseif(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
         "-framework OpenGL"
@@ -158,8 +199,10 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
+# Add compile definitions for Wayland
 target_compile_definitions(${PROJECT_NAME} 
     PRIVATE 
     ASIO_STANDALONE
     _WEBSOCKETPP_CPP11_INTERNAL_
+    $<$<BOOL:${HAVE_WAYLAND}>:USE_WAYLAND>
 )
