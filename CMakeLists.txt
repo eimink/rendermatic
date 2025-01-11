@@ -24,8 +24,8 @@ endif()
 # Set output directory
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Only look for Wayland on Linux
-if(UNIX AND NOT APPLE)
+# Only look for Wayland on Linux when not using DFB modes
+if(UNIX AND NOT APPLE AND NOT DFB_ONLY)
     # Make Wayland optional
     option(USE_WAYLAND "Enable Wayland support" ON)
     
@@ -230,10 +230,14 @@ target_include_directories(${PROJECT_NAME}
 
 # Platform specific configurations
 if(UNIX AND NOT APPLE)
-    if(NOT HAVE_WAYLAND)
-        target_link_libraries(${PROJECT_NAME} PRIVATE GL X11 dl)
-    else()
+    if(DFB_ONLY)
         target_link_libraries(${PROJECT_NAME} PRIVATE dl)
+    else()
+        if(NOT HAVE_WAYLAND)
+            target_link_libraries(${PROJECT_NAME} PRIVATE GL X11 dl)
+        else()
+            target_link_libraries(${PROJECT_NAME} PRIVATE dl)
+        endif()
     endif()
 elseif(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
