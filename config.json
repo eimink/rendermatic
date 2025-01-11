@@ -3,8 +3,8 @@
     "fullscreenScaling": true,
     "monitorIndex": 0,
     "ndiMode": false,
-    "backend": "glfw",
-    "width": 1920,
-    "height": 1080,
+    "backend": "dfb-pure",
+    "width": 1280,
+    "height": 800,
     "wsPort": 9002
 }
