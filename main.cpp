@@ -1,6 +1,6 @@
 #include "dfb_renderer.h"
 #include "dfb_pure_renderer.h"
-#include "renderer.h"
+#include "irenderer.h"
 #include "loader.h"
 #include "config.h"
 #include "ndireceiver.h"
