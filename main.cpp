@@ -20,6 +20,10 @@ int main(int argc, char* argv[]) {
     config.overrideFromCommandLine(argc, argv);
 
     std::unique_ptr<IRenderer> renderer;
+
+#ifdef DFB_PURE_ONLY
+    renderer = std::make_unique<DirectFBPureRenderer>();
+#else
 #ifdef DFB_ONLY
     renderer = std::make_unique<DirectFBRenderer>();
 #else
@@ -48,6 +52,7 @@ int main(int argc, char* argv[]) {
         std::cerr << std::endl;
         return -1;
     }
+#endif
 #endif
 
     std::unique_ptr<NDIReceiver> ndiReceiver;
