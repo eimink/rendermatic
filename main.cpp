@@ -1,4 +1,3 @@
-#include "glfw_renderer.h"
 #include "dfb_renderer.h"
 #include "dfb_pure_renderer.h"
 #include "renderer.h"
@@ -9,11 +8,18 @@
 #include "websocket_server.h"
 #include <iostream>
 
+#ifdef ENABLE_GLFW
+    #include "glfw_renderer.h"
+#endif
+
 int main(int argc, char* argv[]) {
     auto config = Configuration::loadFromFile();
     config.overrideFromCommandLine(argc, argv);
 
     std::unique_ptr<IRenderer> renderer;
+#ifdef DFB_ONLY
+    renderer = std::make_unique<DirectFBRenderer>();
+#else
     if (config.backend == "glfw") {
         renderer = std::make_unique<GLFWRenderer>();
     } else if (config.backend == "dfb") {
@@ -39,6 +45,7 @@ int main(int argc, char* argv[]) {
         std::cerr << std::endl;
         return -1;
     }
+#endif
 
     std::unique_ptr<NDIReceiver> ndiReceiver;
 

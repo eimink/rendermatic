@@ -24,9 +24,14 @@ sudo update-alternatives --config c++
 ### Compilation
 
 ```bash
-mkdir build
-cd build
+# Standard build with all backends
+mkdir build && cd build
 cmake ..
+cmake --build .
+
+# DirectFB-only build (Linux)
+mkdir build && cd build
+cmake -DDFB_ONLY=ON ..
 cmake --build .
 ```
 

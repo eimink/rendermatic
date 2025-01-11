@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.28)
 project(rendermatic)
 
+# Add option for DFB-only mode
+option(DFB_ONLY "Build with DirectFB backend only" OFF)
+
 # Enforce C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,24 +51,26 @@ if(NOT ECM_FOUND)
 endif()
 
 # Find or fetch GLFW with platform-appropriate settings
-find_package(glfw3 QUIET)
-if(NOT glfw3_FOUND)
-    include(FetchContent)
-    FetchContent_Declare(
-        glfw
-        GIT_REPOSITORY https://github.com/glfw/glfw.git
-        GIT_TAG 3.3.8
-    )
-    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    
-    # Add ECM module path if found
-    if(ECM_FOUND)
-        list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+if(NOT DFB_ONLY)
+    find_package(glfw3 QUIET)
+    if(NOT glfw3_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+            glfw
+            GIT_REPOSITORY https://github.com/glfw/glfw.git
+            GIT_TAG 3.3.8
+        )
+        set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        
+        # Add ECM module path if found
+        if(ECM_FOUND)
+            list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+        endif()
+        
+        FetchContent_MakeAvailable(glfw)
     endif()
-    
-    FetchContent_MakeAvailable(glfw)
 endif()
 
 # Fetch and configure GLAD
@@ -141,13 +146,18 @@ set(SOURCES
     main.cpp
     loader.cpp
     ndireceiver.cpp
-    glfw_renderer.cpp
     config.cpp
     texture_manager.cpp
     websocket_server.cpp
 )
 
-if(DirectFB_FOUND)
+if(NOT DFB_ONLY)
+    add_compile_definitions(ENABLE_GLFW)
+    list(APPEND SOURCES 
+        glfw_renderer.cpp
+    )
+else()
+    add_compile_definitions(DFB_ONLY)
     list(APPEND SOURCES 
         dfb_renderer.cpp
         dfb_pure_renderer.cpp
@@ -160,13 +170,22 @@ endif()
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link libraries with conditional DirectFB
-target_link_libraries(${PROJECT_NAME} 
-    PRIVATE
-    glfw
-    glad
-    jsoncpp_static
-    Boost::system
-)
+if(NOT DFB_ONLY)
+    target_link_libraries(${PROJECT_NAME} 
+        PRIVATE
+        glfw
+        glad
+        jsoncpp_static
+        Boost::system
+    )
+else()
+    target_link_libraries(${PROJECT_NAME} 
+        PRIVATE
+        glad
+        jsoncpp_static
+        Boost::system
+    )
+endif()
 
 if(HAVE_WAYLAND)
     target_link_libraries(${PROJECT_NAME} PRIVATE
