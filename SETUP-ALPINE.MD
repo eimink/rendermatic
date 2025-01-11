@@ -32,7 +32,9 @@ apk update
 ```
 
 Add packages needed to build rendermatic
-`apk add nano git cmake clang clang-dev make gcc g++ libc-dev linux-headers boost-dev directfb directfb-dev`
+```sh
+apk add nano git cmake clang clang-dev make gcc g++ libc-dev linux-headers boost-dev directfb directfb-dev
+```
 
 ## Building rendermatic
 
