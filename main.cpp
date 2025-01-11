@@ -1,4 +1,3 @@
-#include "dfb_renderer.h"
 #include "dfb_pure_renderer.h"
 #include "irenderer.h"
 #include "loader.h"
@@ -7,6 +6,10 @@
 #include "texture_manager.h"
 #include "websocket_server.h"
 #include <iostream>
+
+#ifdef DFB_PURE_ONLY
+    #include "dfb_renderer.h"
+#endif
 
 #ifdef ENABLE_GLFW
     #include "glfw_renderer.h"

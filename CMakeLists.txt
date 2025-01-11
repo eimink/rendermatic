@@ -3,6 +3,11 @@ project(rendermatic)
 
 # Add option for DFB-only mode
 option(DFB_ONLY "Build with DirectFB backend only" OFF)
+option(DFB_PURE_ONLY "Build with pure DirectFB backend only" OFF)
+
+if(DFB_PURE_ONLY)
+    set(DFB_ONLY ON CACHE BOOL "Force DFB_ONLY when DFB_PURE_ONLY is enabled" FORCE)
+endif()
 
 # Enforce C++20
 set(CMAKE_CXX_STANDARD 20)
@@ -158,10 +163,17 @@ if(NOT DFB_ONLY)
     )
 else()
     add_compile_definitions(DFB_ONLY)
-    list(APPEND SOURCES 
-        dfb_renderer.cpp
-        dfb_pure_renderer.cpp
-    )
+    if(DFB_PURE_ONLY)
+        add_compile_definitions(DFB_PURE_ONLY)
+        list(APPEND SOURCES 
+            dfb_pure_renderer.cpp
+        )
+    else()
+        list(APPEND SOURCES 
+            dfb_renderer.cpp
+            dfb_pure_renderer.cpp
+        )
+    endif()
     # Ensure GLAD is built with DirectFB support
     set(GLAD_GL_IMPLEMENTATION "gl")
     set(GLAD_EGL_IMPLEMENTATION "egl")
