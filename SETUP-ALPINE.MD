@@ -60,7 +60,7 @@ cd bin
 
 ## Further steps
 
-If you manage to get it to run with X11/Wayland and GLFW, let me know ;)
+As the Wayland/GLFW on nixos is working, might as well test on alpine...
 
 
 
