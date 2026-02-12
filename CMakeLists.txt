@@ -147,6 +147,16 @@ if(UNIX AND NOT APPLE)
             add_compile_definitions(register=)
         endif()
     endif()
+    
+    # Find Avahi for mDNS service discovery (optional)
+    pkg_check_modules(Avahi avahi-client)
+    if(Avahi_FOUND)
+        message(STATUS "Found Avahi for mDNS discovery")
+        add_compile_definitions(HAVE_AVAHI)
+    else()
+        message(STATUS "Avahi not found - mDNS discovery will be unavailable")
+        message(STATUS "To install on Ubuntu/Debian: sudo apt-get install libavahi-client-dev")
+    endif()
 endif()
 
 # Add executable with conditional sources
@@ -157,6 +167,7 @@ set(SOURCES
     config.cpp
     texture_manager.cpp
     websocket_server.cpp
+    mdns_advertiser.cpp
 )
 
 if(NOT DFB_ONLY)
@@ -225,6 +236,11 @@ endif()
 if(DirectFB_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${DirectFB_LIBRARIES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${DirectFB_INCLUDE_DIRS})
+endif()
+
+if(Avahi_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${Avahi_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${Avahi_INCLUDE_DIRS})
 endif()
 
 # Include directories

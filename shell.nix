@@ -30,6 +30,9 @@ pkgs.mkShell {
     libxkbcommon
     libffi
     
+    # mDNS / Service Discovery
+    avahi
+    
     # Optional but useful
     gdb
     valgrind

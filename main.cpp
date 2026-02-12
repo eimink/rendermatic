@@ -5,6 +5,7 @@
 #include "ndireceiver.h"
 #include "texture_manager.h"
 #include "websocket_server.h"
+#include "mdns_advertiser.h"
 #include <iostream>
 #include <filesystem>
 #include <libgen.h>
@@ -75,9 +76,17 @@ int main(int argc, char* argv[]) {
     std::string textureName;
     textureManager.scanTextureDirectory();  // Scan current directory for textures
 
+    // Initialize mDNS advertiser
+    MDNSAdvertiser mdnsAdvertiser(config.instanceName, config.wsPort);
+
     // Initialize WebSocket server
-    WebSocketServer wsServer(textureManager);
+    WebSocketServer wsServer(textureManager, config.wsPort);
+    wsServer.setMDNSAdvertiser(&mdnsAdvertiser);
+    wsServer.setConfiguration(&config);
     wsServer.start();
+    
+    // Publish mDNS service (warns and continues if Avahi unavailable)
+    mdnsAdvertiser.publish();
     
     if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
         return -1;

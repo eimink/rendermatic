@@ -1,5 +1,8 @@
 #include "websocket_server.h"
+#include "mdns_advertiser.h"
+#include "config.h"
 #include <json/json.h>
+#include <unistd.h>
 
 WebSocketServer::WebSocketServer(TextureManager& tm, uint16_t port) 
     : textureManager(tm), running(false), port(port) {
@@ -42,6 +45,27 @@ void WebSocketServer::run() {
     }
 }
 
+bool WebSocketServer::setInstanceName(const std::string& newName) {
+    if (!m_config) {
+        return false;
+    }
+    
+    // Update config in memory
+    m_config->instanceName = newName;
+    
+    // Persist to file
+    if (!m_config->saveToFile()) {
+        return false;
+    }
+    
+    // Update mDNS if available
+    if (m_advertiser) {
+        m_advertiser->updateInstanceName(newName);
+    }
+    
+    return true;
+}
+
 void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::message_ptr msg) {
     Json::Value root;
     Json::Reader reader;
@@ -80,6 +104,41 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         bool success = textureManager.setCurrentTexture(textureName);
         response["command"] = "set_texture_response";
         response["success"] = success;
+    }
+    else if (command == "get_device_info") {
+        // Return device information including current texture
+        response["command"] = "device_info";
+        
+        if (m_config) {
+            response["instanceName"] = m_config->instanceName;
+        }
+        
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) == 0) {
+            response["hostname"] = std::string(hostname);
+        }
+        
+        response["wsPort"] = port;
+        response["currentTexture"] = textureManager.getCurrentTextureName();
+        response["success"] = true;
+    }
+    else if (command == "set_device_name") {
+        // Update device instance name
+        response["command"] = "device_name_response";
+        
+        if (!root.isMember("name") || root["name"].isNull()) {
+            response["success"] = false;
+            response["message"] = "Missing 'name' field";
+        } else {
+            std::string newName = root["name"].asString();
+            if (setInstanceName(newName)) {
+                response["success"] = true;
+                response["instanceName"] = newName;
+            } else {
+                response["success"] = false;
+                response["message"] = "Failed to update device name";
+            }
+        }
     }
     else {
         response["command"] = "error";

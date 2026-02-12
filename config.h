@@ -10,11 +10,13 @@ struct Configuration {
     std::string backend = "glfw";
     int width = 1920;
     int height = 1080;
-    uint16_t wsPort = 9002;  // Add WebSocket port configuration
+    uint16_t wsPort = 9002;
+    std::string instanceName = "";  // Empty = auto-generate from hostname
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);
     void printUsage(const char* programName);
+    bool saveToFile(const std::string& path = "config.json") const;
 };
 
 const std::string SHADER_PATH = "shaders/";
