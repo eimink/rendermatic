@@ -6,8 +6,10 @@
 #include "texture_manager.h"
 #include "websocket_server.h"
 #include <iostream>
+#include <filesystem>
+#include <libgen.h>
 
-#ifdef DFB_PURE_ONLY
+#ifdef HAVE_DIRECTFB
     #include "dfb_renderer.h"
 #endif
 
@@ -16,6 +18,18 @@
 #endif
 
 int main(int argc, char* argv[]) {
+    // Change working directory to the executable's directory
+    // This allows the app to find shaders, textures, and config.json
+    std::string exePath = argv[0];
+    std::string exeDir = std::filesystem::path(exePath).parent_path().string();
+    if (!exeDir.empty()) {
+        try {
+            std::filesystem::current_path(exeDir);
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Could not change to executable directory: " << e.what() << std::endl;
+        }
+    }
+    
     auto config = Configuration::loadFromFile();
     config.overrideFromCommandLine(argc, argv);
 

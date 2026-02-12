@@ -1,7 +1,8 @@
 #ifdef HAVE_DIRECTFB
 #include "dfb_renderer.h"
 #include <iostream>
-#include <glad/glad.h>
+#include <glad/gl.h>
+#include <EGL/egl.h>
 
 DirectFBRenderer::DirectFBRenderer() 
     : m_dfb(nullptr), m_primary(nullptr), m_shouldClose(false), 
@@ -129,7 +130,8 @@ bool DirectFBRenderer::shouldClose() const {
 }
 
 bool DirectFBRenderer::initGL() {
-    if (!gladLoadGL()) {
+    // DirectFB's eglGetProcAddress equivalent for loading GL functions
+    if (!gladLoadGL((GLADloadfunc)eglGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return false;
     }

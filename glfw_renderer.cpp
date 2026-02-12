@@ -102,10 +102,6 @@ bool GLFWRenderer::initGLFW() {
         return false;
     }
 
-    // Check OpenGL version support
-    const char* glVersion = (const char*)glGetString(GL_VERSION);
-    std::cout << "OpenGL Version: " << (glVersion ? glVersion : "unknown") << std::endl;
-
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -132,10 +128,15 @@ bool GLFWRenderer::initGLFW() {
 }
 
 bool GLFWRenderer::initGLAD() {
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    if (!gladLoadGL(glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return false;
     }
+    
+    // Check OpenGL version support (now that context is active)
+    const char* glVersion = (const char*)glGetString(GL_VERSION);
+    std::cout << "OpenGL Version: " << (glVersion ? glVersion : "unknown") << std::endl;
+    
     return true;
 }
 

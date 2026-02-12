@@ -3,7 +3,7 @@
     "fullscreenScaling": true,
     "monitorIndex": 0,
     "ndiMode": false,
-    "backend": "dfb-pure",
+    "backend": "glfw",
     "width": 1280,
     "height": 800,
     "wsPort": 9002

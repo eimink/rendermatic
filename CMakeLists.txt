@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.5)
 project(rendermatic)
 
 # Add option for DFB-only mode
@@ -63,7 +63,7 @@ if(NOT DFB_ONLY)
         FetchContent_Declare(
             glfw
             GIT_REPOSITORY https://github.com/glfw/glfw.git
-            GIT_TAG 3.3.8
+            GIT_TAG 3.4
         )
         set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
         set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -83,15 +83,19 @@ include(FetchContent)
 FetchContent_Declare(
     glad
     GIT_REPOSITORY https://github.com/Dav1dde/glad.git
-    GIT_TAG v0.1.36
+    GIT_TAG v2.0.8
 )
 FetchContent_GetProperties(glad)
 if(NOT glad_POPULATED)
     FetchContent_Populate(glad)
-    set(GLAD_PROFILE "core" CACHE STRING "OpenGL profile")
-    set(GLAD_API "gl=3.3" CACHE STRING "API type/version pairs")
-    set(GLAD_GENERATOR "c" CACHE STRING "Language to generate the binding for")
-    add_subdirectory(${glad_SOURCE_DIR} ${glad_BINARY_DIR})
+    
+    # Add GLAD's cmake configuration
+    list(APPEND CMAKE_MODULE_PATH "${glad_SOURCE_DIR}/cmake")
+    set(GLAD_SOURCES_DIR "${glad_SOURCE_DIR}" CACHE STRING "GLAD sources directory" FORCE)
+    include("${glad_SOURCE_DIR}/cmake/GladConfig.cmake")
+    
+    # Create glad library for OpenGL 3.3 core
+    glad_add_library(glad STATIC API gl:core=3.3)
 endif()
 
 # Add ASIO first (before WebSocket++)
@@ -106,8 +110,7 @@ FetchContent_MakeAvailable(asio)
 find_package(Boost REQUIRED COMPONENTS system)
 FetchContent_Declare(
     websocketpp
-    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
-    GIT_TAG 0.8.2
+    GIT_REPOSITORY https://github.com/TroniusGaming/websocketpp.git
 )
 FetchContent_MakeAvailable(websocketpp)
 
@@ -174,7 +177,14 @@ else()
             dfb_pure_renderer.cpp
         )
     endif()
-    # Ensure GLAD is built with DirectFB support
+endif()
+
+# Always include DirectFB renderers if DirectFB is found (for hybrid builds)
+if(DirectFB_FOUND AND NOT DFB_ONLY)
+    list(APPEND SOURCES 
+        dfb_renderer.cpp
+        dfb_pure_renderer.cpp
+    )
     set(GLAD_GL_IMPLEMENTATION "gl")
     set(GLAD_EGL_IMPLEMENTATION "egl")
 endif()
@@ -220,8 +230,8 @@ endif()
 # Include directories
 target_include_directories(${PROJECT_NAME} 
     PRIVATE
-    ${glad_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/gladsources/glad/include
     ${websocketpp_SOURCE_DIR}
     ${asio_SOURCE_DIR}/asio/include
     ${jsoncpp_SOURCE_DIR}/include
@@ -264,6 +274,5 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_RUNTIME_OU
 target_compile_definitions(${PROJECT_NAME} 
     PRIVATE 
     ASIO_STANDALONE
-    _WEBSOCKETPP_CPP11_INTERNAL_
     $<$<BOOL:${HAVE_WAYLAND}>:USE_WAYLAND>
 )
