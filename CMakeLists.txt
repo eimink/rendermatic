@@ -106,8 +106,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(asio)
 
-# Add WebSocket++ and its dependencies
-find_package(Boost REQUIRED COMPONENTS system)
+# Add WebSocket++
 FetchContent_Declare(
     websocketpp
     GIT_REPOSITORY https://github.com/TroniusGaming/websocketpp.git
@@ -159,6 +158,12 @@ if(UNIX AND NOT APPLE)
     endif()
 endif()
 
+# macOS: Bonjour mDNS support via dns_sd.h (system header, no extra linking needed)
+if(APPLE)
+    add_compile_definitions(HAVE_BONJOUR)
+    message(STATUS "Using Bonjour for mDNS discovery (macOS native)")
+endif()
+
 # Add executable with conditional sources
 set(SOURCES
     main.cpp
@@ -204,19 +209,17 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link libraries with conditional DirectFB
 if(NOT DFB_ONLY)
-    target_link_libraries(${PROJECT_NAME} 
+    target_link_libraries(${PROJECT_NAME}
         PRIVATE
         glfw
         glad
         jsoncpp_static
-        Boost::system
     )
 else()
-    target_link_libraries(${PROJECT_NAME} 
+    target_link_libraries(${PROJECT_NAME}
         PRIVATE
         glad
         jsoncpp_static
-        Boost::system
     )
 endif()
 

@@ -19,7 +19,6 @@ pkgs.mkShell {
     libcxx
     
     # Dependencies
-    boost
     glfw3
     directfb
     libGL

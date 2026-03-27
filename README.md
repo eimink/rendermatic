@@ -10,11 +10,11 @@ A 'high-performance' rendering application
 - C++20 compatible compiler, Clang preferred
 - GLFW3 development files
 - DirectFB (on Linux)
-- Boost development files
+- ASIO (fetched automatically by CMake)
 
 #### Ubuntu/Debian
 ```bash
-sudo apt-get install build-essential clang cmake libboost-system-dev libglfw3-dev libdirectfb-dev pkg-config
+sudo apt-get install build-essential clang cmake libglfw3-dev libdirectfb-dev pkg-config
 sudo update-alternatives --install /usr/bin/cc cc /usr/bin/clang 100
 sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++ 100
 sudo update-alternatives --config cc

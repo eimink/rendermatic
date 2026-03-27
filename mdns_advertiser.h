@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 
-struct AvahiContext;
+struct MDNSContext;
 
 class MDNSAdvertiser {
 public:
@@ -31,6 +31,6 @@ public:
 private:
     std::string m_instanceName;
     uint16_t m_port;
-    std::unique_ptr<AvahiContext> m_avahi;
+    std::unique_ptr<MDNSContext> m_ctx;
     bool m_published = false;
 };
