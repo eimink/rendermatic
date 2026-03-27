@@ -164,6 +164,22 @@ if(APPLE)
     message(STATUS "Using Bonjour for mDNS discovery (macOS native)")
 endif()
 
+# Optional: FFmpeg for video/stream decoding
+option(ENABLE_FFMPEG "Enable FFmpeg video/stream support" ON)
+if(ENABLE_FFMPEG)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFMPEG libavformat libavcodec libswscale libavutil)
+    endif()
+    if(FFMPEG_FOUND)
+        message(STATUS "Found FFmpeg for video/stream support")
+        add_compile_definitions(HAVE_FFMPEG)
+    else()
+        message(STATUS "FFmpeg not found - video/stream support will be unavailable")
+        message(STATUS "Install with: brew install ffmpeg (macOS) or apk add ffmpeg-dev (Alpine)")
+    endif()
+endif()
+
 # Add executable with conditional sources
 set(SOURCES
     main.cpp
@@ -205,6 +221,10 @@ if(DirectFB_FOUND AND NOT DFB_ONLY)
     set(GLAD_EGL_IMPLEMENTATION "egl")
 endif()
 
+if(FFMPEG_FOUND)
+    list(APPEND SOURCES video_decoder.cpp)
+endif()
+
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link libraries with conditional DirectFB
@@ -244,6 +264,12 @@ endif()
 if(Avahi_FOUND)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${Avahi_LIBRARIES})
     target_include_directories(${PROJECT_NAME} PRIVATE ${Avahi_INCLUDE_DIRS})
+endif()
+
+if(FFMPEG_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${FFMPEG_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_LIBRARY_DIRS})
 endif()
 
 # Include directories

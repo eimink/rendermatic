@@ -29,6 +29,9 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.height = root.get("height", 1080).asInt();
                 config.wsPort = root.get("wsPort", 9002).asUInt();
                 config.instanceName = root.get("instanceName", "").asString();
+                config.videoSource = root.get("videoSource", "").asString();
+                config.videoMode = root.get("videoMode", false).asBool();
+                config.videoLoop = root.get("videoLoop", true).asBool();
             }
         }
     } catch (const std::exception& e) {
@@ -65,6 +68,9 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["height"] = height;
         root["wsPort"] = wsPort;
         root["instanceName"] = instanceName;
+        root["videoSource"] = videoSource;
+        root["videoMode"] = videoMode;
+        root["videoLoop"] = videoLoop;
         
         std::ofstream file(path);
         if (!file.is_open()) {
@@ -104,6 +110,11 @@ void Configuration::overrideFromCommandLine(int argc, char* argv[]) {
             fullscreenScaling = true;
         } else if (arg == "-i" && i + 1 < argc) {
             instanceName = argv[++i];
+        } else if (arg == "-v" && i + 1 < argc) {
+            videoSource = argv[++i];
+            videoMode = true;
+        } else if (arg == "--no-loop") {
+            videoLoop = false;
         } else if (arg == "-h" || arg == "--help") {
             printUsage(argv[0]);
             exit(0);
@@ -119,5 +130,7 @@ void Configuration::printUsage(const char* programName) {
               << "  -b <backend>      : Rendering backend (glfw/dfb/dfb-pure, default: " << backend << ")\n"
               << "  -r <w> <h>        : Set resolution (default: " << width << "x" << height << ")\n"
               << "  -f                : Enable fullscreen scaling\n"
-              << "  -i <instance_name>: Set instance name (default: rendermatic-{hostname})\n";
+              << "  -i <instance_name>: Set instance name (default: rendermatic-{hostname})\n"
+              << "  -v <source>       : Play video file or stream (rtmp://, rtsp://, srt://, or file path)\n"
+              << "  --no-loop         : Disable video file looping\n";
 }

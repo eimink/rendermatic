@@ -12,6 +12,9 @@ struct Configuration {
     int height = 1080;
     uint16_t wsPort = 9002;
     std::string instanceName = "";  // Empty = auto-generate from hostname
+    std::string videoSource = "";   // Video file path or stream URL
+    bool videoMode = false;         // Use video decoder instead of static textures
+    bool videoLoop = true;          // Loop video files (ignored for streams)
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);

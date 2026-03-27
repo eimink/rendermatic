@@ -8,6 +8,9 @@
 
 class MDNSAdvertiser;
 struct Configuration;
+#ifdef HAVE_FFMPEG
+class VideoDecoder;
+#endif
 
 class WebSocketServer {
 public:
@@ -24,6 +27,11 @@ public:
     
     // Set configuration for device info and name persistence
     void setConfiguration(Configuration* config) { m_config = config; }
+
+#ifdef HAVE_FFMPEG
+    // Set video decoder for playback control
+    void setVideoDecoder(VideoDecoder* decoder) { m_videoDecoder = decoder; }
+#endif
     
     // Update instance name (updates mDNS and config)
     bool setInstanceName(const std::string& newName);
@@ -39,4 +47,7 @@ private:
     uint16_t port;
     MDNSAdvertiser* m_advertiser = nullptr;
     Configuration* m_config = nullptr;
+#ifdef HAVE_FFMPEG
+    VideoDecoder* m_videoDecoder = nullptr;
+#endif
 };

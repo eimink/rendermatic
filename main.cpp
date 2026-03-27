@@ -18,6 +18,10 @@
     #include "glfw_renderer.h"
 #endif
 
+#ifdef HAVE_FFMPEG
+    #include "video_decoder.h"
+#endif
+
 int main(int argc, char* argv[]) {
     // Change working directory to the executable's directory
     // This allows the app to find shaders, textures, and config.json
@@ -106,10 +110,26 @@ int main(int argc, char* argv[]) {
         ndiReceiver->start();
     }
 
+#ifdef HAVE_FFMPEG
+    std::unique_ptr<VideoDecoder> videoDecoder;
+    if (config.videoMode && !config.videoSource.empty()) {
+        videoDecoder = std::make_unique<VideoDecoder>();
+        videoDecoder->setLoop(config.videoLoop);
+        if (videoDecoder->open(config.videoSource)) {
+            videoDecoder->start();
+        } else {
+            std::cerr << "Failed to open video source: " << config.videoSource << std::endl;
+            videoDecoder.reset();
+        }
+    }
+    wsServer.setVideoDecoder(videoDecoder.get());
+#endif
+
     // Main loop
+    Texture videoFrame;
     while (!renderer->shouldClose()) {
         renderer->processInput();
-        
+
         if (textureManager.getCurrentTextureName() != textureName) {
             displayTexture = textureManager.getCurrentTexture();
             textureName = textureManager.getCurrentTextureName();
@@ -122,12 +142,28 @@ int main(int argc, char* argv[]) {
             }
         }
 
+#ifdef HAVE_FFMPEG
+        if (videoDecoder && videoDecoder->isActive()) {
+            videoDecoder->getLatestFrame(videoFrame);
+            if (videoFrame.isValid()) {
+                renderer->render(videoFrame);
+                continue;
+            }
+        }
+#endif
+
         renderer->render(*displayTexture);
     }
 
     if (ndiReceiver) {
         ndiReceiver->stop();
     }
+
+#ifdef HAVE_FFMPEG
+    if (videoDecoder) {
+        videoDecoder->stop();
+    }
+#endif
 
     // Before return, stop WebSocket server
     wsServer.stop();

@@ -1,6 +1,9 @@
 #include "websocket_server.h"
 #include "mdns_advertiser.h"
 #include "config.h"
+#ifdef HAVE_FFMPEG
+#include "video_decoder.h"
+#endif
 #include <json/json.h>
 #include <unistd.h>
 
@@ -140,6 +143,66 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             }
         }
     }
+#ifdef HAVE_FFMPEG
+    else if (command == "play_video") {
+        response["command"] = "play_video_response";
+        if (!m_videoDecoder) {
+            response["success"] = false;
+            response["message"] = "Video decoder not available";
+        } else if (!root.isMember("source") || root["source"].isNull()) {
+            response["success"] = false;
+            response["message"] = "Missing 'source' field";
+        } else {
+            std::string source = root["source"].asString();
+            bool loop = root.get("loop", true).asBool();
+            m_videoDecoder->stop();
+            m_videoDecoder->setLoop(loop);
+            if (m_videoDecoder->open(source)) {
+                m_videoDecoder->start();
+                if (m_config) {
+                    m_config->videoSource = source;
+                    m_config->videoMode = true;
+                    m_config->videoLoop = loop;
+                }
+                response["success"] = true;
+            } else {
+                response["success"] = false;
+                response["message"] = "Failed to open video source";
+            }
+        }
+    }
+    else if (command == "stop_video") {
+        response["command"] = "stop_video_response";
+        if (m_videoDecoder) {
+            m_videoDecoder->stop();
+            m_videoDecoder->close();
+            if (m_config) {
+                m_config->videoMode = false;
+            }
+            response["success"] = true;
+        } else {
+            response["success"] = false;
+            response["message"] = "Video decoder not available";
+        }
+    }
+    else if (command == "get_video_status") {
+        response["command"] = "video_status";
+        if (m_videoDecoder) {
+            response["active"] = m_videoDecoder->isActive();
+            auto info = m_videoDecoder->getSourceInfo();
+            response["source"] = info.source;
+            response["width"] = info.width;
+            response["height"] = info.height;
+            response["fps"] = info.fps;
+            response["duration"] = info.duration;
+            response["codec"] = info.codec;
+            response["success"] = true;
+        } else {
+            response["active"] = false;
+            response["success"] = true;
+        }
+    }
+#endif
     else {
         response["command"] = "error";
         response["message"] = "Unknown command";
