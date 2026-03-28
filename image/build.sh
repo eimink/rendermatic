@@ -15,32 +15,43 @@ else
     exit 1
 fi
 
-ARCH="${1:-aarch64}"
+TARGET="${1:-rpi}"
 IMAGE_SIZE_MB="${2:-512}"
 
-case "$ARCH" in
-    aarch64|arm64)
+case "$TARGET" in
+    rpi)
         PLATFORM="linux/arm64"
         ARCH_LABEL="aarch64"
         ;;
-    x86_64|amd64)
+    generic-arm64|vm-arm64)
+        PLATFORM="linux/arm64"
+        ARCH_LABEL="aarch64"
+        ;;
+    x86_64|amd64|generic-amd64)
         PLATFORM="linux/amd64"
         ARCH_LABEL="x86_64"
+        TARGET="x86_64"
         ;;
     *)
-        echo "Usage: $0 <arch> [image_size_mb]"
-        echo "  arch: aarch64 (default) or x86_64"
-        echo "  image_size_mb: total image size in MB (default: 512)"
+        echo "Usage: $0 <target> [image_size_mb]"
+        echo ""
+        echo "Targets:"
+        echo "  rpi            Raspberry Pi 3/4/5 (default)"
+        echo "  generic-arm64  Generic aarch64 VM (UTM, QEMU, Parallels)"
+        echo "  x86_64         x86_64 (PC, VirtualBox, VMware)"
+        echo ""
+        echo "Options:"
+        echo "  image_size_mb  Total image size in MB (default: 512)"
         exit 1
         ;;
 esac
 
-IMAGE_NAME="rendermatic-${ARCH_LABEL}"
+IMAGE_NAME="rendermatic-${TARGET}"
 OUTPUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}.img"
 
 echo "=== Rendermatic Image Builder ==="
 echo "Container runtime: ${CTR}"
-echo "Architecture:      ${ARCH_LABEL} (${PLATFORM})"
+echo "Target:            ${TARGET} (${PLATFORM})"
 echo "Image size:        ${IMAGE_SIZE_MB}MB"
 echo "Output:            ${OUTPUT_FILE}.gz"
 echo ""
@@ -69,14 +80,12 @@ echo "Rootfs exported: $(du -h "$ROOTFS_TAR" | cut -f1)"
 # --- Step 3: Create disk image ---
 echo "--- Creating disk image ---"
 
-# Disk image creation needs Linux tools (losetup, mkfs, parted)
-# Run inside a privileged container
 $CTR run --rm --privileged \
     --platform "$PLATFORM" \
     -v "${OUTPUT_DIR}:/output:z" \
     -v "${SCRIPT_DIR}/mkimage.sh:/mkimage.sh:ro,z" \
     alpine:3.21 \
-    sh -c "apk add --no-cache e2fsprogs dosfstools mtools util-linux alpine-keys && sh /mkimage.sh /output/rootfs-${ARCH_LABEL}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB}"
+    sh -c "apk add --no-cache e2fsprogs dosfstools mtools util-linux alpine-keys && sh /mkimage.sh /output/rootfs-${ARCH_LABEL}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB} ${TARGET}"
 
 rm -f "$ROOTFS_TAR"
 
@@ -88,7 +97,7 @@ echo ""
 echo "=== Done ==="
 echo "Image: ${OUTPUT_FILE}.gz ($(du -h "${OUTPUT_FILE}.gz" | cut -f1))"
 echo ""
-echo "Flash to SD card:"
+echo "Flash to SD card / create VM disk:"
 echo "  gunzip -c ${OUTPUT_FILE}.gz | sudo dd of=/dev/sdX bs=4M status=progress"
 echo ""
 echo "After flashing, mount the data partition (p3) to add your SSH key:"

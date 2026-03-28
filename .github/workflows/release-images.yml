@@ -1,0 +1,65 @@
+name: Build and Release Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-arm64:
+    name: Build aarch64 images (RPi + generic)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build RPi image
+        run: sh image/build.sh rpi
+
+      - name: Build generic-arm64 image
+        run: sh image/build.sh generic-arm64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-arm64
+          path: image/output/*.img.gz
+
+  build-x86_64:
+    name: Build x86_64 image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build x86_64 image
+        run: sh image/build.sh x86_64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-x86_64
+          path: image/output/*.img.gz
+
+  release:
+    name: Create release
+    needs: [build-arm64, build-x86_64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Rendermatic ${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*.img.gz
