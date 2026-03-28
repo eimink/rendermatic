@@ -1,0 +1,43 @@
+#!/sbin/openrc-run
+
+name="data-mount"
+description="Mount data partition and bind writable paths into rendermatic"
+
+depend() {
+    need localmount
+    before rendermatic
+}
+
+start() {
+    ebegin "Setting up rendermatic data paths"
+
+    # Initialize data partition on first boot
+    if [ ! -f /data/.initialized ]; then
+        einfo "First boot: initializing data partition"
+        mkdir -p /data/textures /data/logs /data/ssh
+        cp /rendermatic/config.json.default /data/config.json
+        # Copy default textures
+        cp /rendermatic/textures/* /data/textures/ 2>/dev/null || true
+        touch /data/.initialized
+    fi
+
+    # Bind mount writable paths into rendermatic directory
+    mount --bind /data/textures /rendermatic/textures
+    mount --bind /data/config.json /rendermatic/config.json
+
+    # Bind mount SSH authorized_keys if present
+    if [ -f /data/ssh/authorized_keys ]; then
+        mkdir -p /root/.ssh
+        mount --bind /data/ssh/authorized_keys /root/.ssh/authorized_keys
+    fi
+
+    eend $?
+}
+
+stop() {
+    ebegin "Unmounting rendermatic data paths"
+    umount /rendermatic/textures 2>/dev/null
+    umount /rendermatic/config.json 2>/dev/null
+    umount /root/.ssh/authorized_keys 2>/dev/null
+    eend $?
+}

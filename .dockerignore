@@ -1,0 +1,5 @@
+build/
+image/output/
+.git/
+*.img
+*.img.gz

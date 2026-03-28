@@ -1,6 +1,6 @@
 [Unit]
 Description=Rendermatic Graphics Application
-After=network-online.target graphical.target
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -9,12 +9,12 @@ WorkingDirectory=/rendermatic
 ExecStart=/rendermatic/rendermatic
 Restart=on-failure
 RestartSec=5
-Environment=DISPLAY=:0
-# Root-specific security settings
+
+# Security hardening
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target

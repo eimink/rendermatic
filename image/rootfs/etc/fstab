@@ -1,0 +1,8 @@
+# Rendermatic appliance filesystem table
+# Root is read-only to preserve SD card / flash storage
+# Data partition is writable for textures, config, and logs
+
+/dev/root       /           ext4    ro,noatime          0 1
+tmpfs           /tmp        tmpfs   nosuid,nodev        0 0
+tmpfs           /run        tmpfs   nosuid,nodev        0 0
+/dev/data       /data       ext4    rw,noatime,commit=60  0 2

@@ -3,13 +3,77 @@
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
+#include <cstdio>
 
-static std::string getHostname() {
+#ifdef __APPLE__
+#include <ifaddrs.h>
+#include <net/if_dl.h>
+#include <net/if.h>
+#else
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <net/if_arp.h>
+#include <cstring>
+#include <dirent.h>
+#endif
+
+// Returns last 3 bytes of the MAC address as a hex string (e.g. "a1b2c3").
+// Falls back to hostname if no usable interface is found.
+static std::string getDeviceId() {
+#ifdef __APPLE__
+    struct ifaddrs* iflist = nullptr;
+    if (getifaddrs(&iflist) == 0) {
+        for (auto* ifa = iflist; ifa; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_LINK &&
+                (ifa->ifa_flags & IFF_LOOPBACK) == 0 &&
+                (ifa->ifa_flags & IFF_UP)) {
+                auto* sdl = reinterpret_cast<struct sockaddr_dl*>(ifa->ifa_addr);
+                if (sdl->sdl_alen == 6) {
+                    auto* mac = reinterpret_cast<unsigned char*>(LLADDR(sdl));
+                    char buf[7];
+                    snprintf(buf, sizeof(buf), "%02x%02x%02x", mac[3], mac[4], mac[5]);
+                    freeifaddrs(iflist);
+                    return std::string(buf);
+                }
+            }
+        }
+        freeifaddrs(iflist);
+    }
+#else
+    // Linux: read MAC from /sys/class/net/*/address, skip lo
+    DIR* dir = opendir("/sys/class/net");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string iface = entry->d_name;
+            if (iface == "." || iface == ".." || iface == "lo") continue;
+
+            std::string path = "/sys/class/net/" + iface + "/address";
+            std::ifstream f(path);
+            std::string mac;
+            if (f.is_open() && std::getline(f, mac) && mac.size() >= 17) {
+                // mac format: "aa:bb:cc:dd:ee:ff" — use last 3 octets
+                char buf[7];
+                unsigned int d, e, ff;
+                if (sscanf(mac.c_str() + 9, "%02x:%02x:%02x", &d, &e, &ff) == 3) {
+                    snprintf(buf, sizeof(buf), "%02x%02x%02x", d, e, ff);
+                    closedir(dir);
+                    return std::string(buf);
+                }
+            }
+        }
+        closedir(dir);
+    }
+#endif
+
+    // Fallback to hostname
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
         return std::string(hostname);
     }
-    return "rendermatic";
+    return "000000";
 }
 
 Configuration Configuration::loadFromFile(const std::string& path) {
@@ -49,7 +113,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
     
     // Auto-generate instance name if not set
     if (config.instanceName.empty()) {
-        config.instanceName = "rendermatic-" + getHostname();
+        config.instanceName = "rendermatic-" + getDeviceId();
         // Persist auto-generated name back to config file
         config.saveToFile(path);
     }
