@@ -15,6 +15,7 @@ struct Configuration {
     std::string videoSource = "";   // Video file path or stream URL
     bool videoMode = false;         // Use video decoder instead of static textures
     bool videoLoop = true;          // Loop video files (ignored for streams)
+    std::string authKeyHash = "";   // SHA-256 hex of auth key; empty = no auth (open mode)
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);

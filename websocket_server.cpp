@@ -4,14 +4,15 @@
 #ifdef HAVE_FFMPEG
 #include "video_decoder.h"
 #endif
-#include <json/json.h>
 #include <unistd.h>
 
-WebSocketServer::WebSocketServer(TextureManager& tm, uint16_t port) 
+WebSocketServer::WebSocketServer(TextureManager& tm, uint16_t port)
     : textureManager(tm), running(false), port(port) {
     server.clear_access_channels(websocketpp::log::alevel::all);
     server.init_asio();
-    server.set_message_handler(bind(&WebSocketServer::onMessage, this, 
+    server.set_open_handler(bind(&WebSocketServer::onOpen, this, std::placeholders::_1));
+    server.set_close_handler(bind(&WebSocketServer::onClose, this, std::placeholders::_1));
+    server.set_message_handler(bind(&WebSocketServer::onMessage, this,
         std::placeholders::_1, std::placeholders::_2));
 }
 
@@ -48,25 +49,56 @@ void WebSocketServer::run() {
     }
 }
 
+void WebSocketServer::setConfiguration(Configuration* config) {
+    m_config = config;
+    if (m_config) {
+        m_auth.setStoredHash(m_config->authKeyHash);
+    }
+}
+
 bool WebSocketServer::setInstanceName(const std::string& newName) {
     if (!m_config) {
         return false;
     }
-    
-    // Update config in memory
+
     m_config->instanceName = newName;
-    
-    // Persist to file
+
     if (!m_config->saveToFile()) {
         return false;
     }
-    
-    // Update mDNS if available
+
     if (m_advertiser) {
         m_advertiser->updateInstanceName(newName);
     }
-    
+
     return true;
+}
+
+void WebSocketServer::onOpen(websocketpp::connection_hdl hdl) {
+    auto con = server.get_con_from_hdl(hdl);
+    std::string remoteIp = con->get_remote_endpoint();
+
+    m_auth.onConnectionOpened(hdl, remoteIp);
+
+    Json::Value notice;
+    notice["command"] = "auth_status";
+    if (m_auth.isOpenMode()) {
+        notice["authRequired"] = false;
+        notice["authenticated"] = true;
+    } else {
+        notice["authRequired"] = true;
+        notice["authenticated"] = false;
+    }
+    sendJson(hdl, notice);
+}
+
+void WebSocketServer::onClose(websocketpp::connection_hdl hdl) {
+    m_auth.onConnectionClosed(hdl);
+}
+
+void WebSocketServer::sendJson(websocketpp::connection_hdl hdl, const Json::Value& response) {
+    Json::FastWriter writer;
+    server.send(hdl, writer.write(response), websocketpp::frame::opcode::text);
 }
 
 void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::message_ptr msg) {
@@ -78,6 +110,57 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
 
     std::string command = root["command"].asString();
     Json::Value response;
+
+    // --- Authentication gate ---
+    if (!m_auth.isOpenMode()) {
+        // Always allow authenticate command
+        if (command == "authenticate") {
+            response["command"] = "auth_response";
+
+            if (m_auth.isRateLimited(hdl)) {
+                response["success"] = false;
+                response["message"] = "Too many failed attempts. Try again later.";
+                response["retryAfterSeconds"] = m_auth.getRemainingLockoutSeconds(hdl);
+                sendJson(hdl, response);
+                return;
+            }
+
+            std::string key = root.get("key", "").asString();
+            if (m_auth.tryAuthenticate(hdl, key)) {
+                response["success"] = true;
+                response["message"] = "Authenticated successfully";
+            } else {
+                response["success"] = false;
+                response["message"] = "Invalid authentication key";
+            }
+            sendJson(hdl, response);
+            return;
+        }
+
+        // Allow limited get_device_info for discovery
+        if (command == "get_device_info" && !m_auth.isAuthenticated(hdl)) {
+            response["command"] = "device_info";
+            if (m_config) {
+                response["instanceName"] = m_config->instanceName;
+            }
+            response["authRequired"] = true;
+            response["authenticated"] = false;
+            response["success"] = true;
+            sendJson(hdl, response);
+            return;
+        }
+
+        // Block all other commands for unauthenticated connections
+        if (!m_auth.isAuthenticated(hdl)) {
+            response["command"] = "auth_required";
+            response["message"] = "Authentication required";
+            response["success"] = false;
+            sendJson(hdl, response);
+            return;
+        }
+    }
+
+    // --- Commands (requires authentication when auth is enabled) ---
 
     if (command == "scan_textures") {
         textureManager.scanTextureDirectory();
@@ -109,26 +192,25 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["success"] = success;
     }
     else if (command == "get_device_info") {
-        // Return device information including current texture
         response["command"] = "device_info";
-        
+
         if (m_config) {
             response["instanceName"] = m_config->instanceName;
         }
-        
+
         char hostname[256];
         if (gethostname(hostname, sizeof(hostname)) == 0) {
             response["hostname"] = std::string(hostname);
         }
-        
+
         response["wsPort"] = port;
         response["currentTexture"] = textureManager.getCurrentTextureName();
+        response["authEnabled"] = m_auth.isAuthEnabled();
         response["success"] = true;
     }
     else if (command == "set_device_name") {
-        // Update device instance name
         response["command"] = "device_name_response";
-        
+
         if (!root.isMember("name") || root["name"].isNull()) {
             response["success"] = false;
             response["message"] = "Missing 'name' field";
@@ -142,6 +224,47 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
                 response["message"] = "Failed to update device name";
             }
         }
+    }
+    // --- Auth management commands ---
+    else if (command == "set_auth_key") {
+        response["command"] = "set_auth_key_response";
+        std::string newKey = root.get("key", "").asString();
+        if (newKey.empty()) {
+            response["success"] = false;
+            response["message"] = "Key cannot be empty. Use 'clear_auth_key' to disable auth.";
+        } else if (newKey.length() < 8) {
+            response["success"] = false;
+            response["message"] = "Key must be at least 8 characters";
+        } else {
+            bool wasOpenMode = m_auth.isOpenMode();
+            m_auth.setKey(newKey);
+            if (m_config) {
+                m_config->authKeyHash = m_auth.getStoredHash();
+                m_config->saveToFile();
+            }
+            // If enabling auth for the first time, mark this connection as authenticated
+            if (wasOpenMode) {
+                m_auth.markAuthenticated(hdl);
+            }
+            response["success"] = true;
+            response["message"] = "Authentication key updated";
+        }
+    }
+    else if (command == "clear_auth_key") {
+        response["command"] = "clear_auth_key_response";
+        m_auth.clearKey();
+        if (m_config) {
+            m_config->authKeyHash = "";
+            m_config->saveToFile();
+        }
+        response["success"] = true;
+        response["message"] = "Authentication disabled. All connections are now open.";
+    }
+    else if (command == "get_auth_status") {
+        response["command"] = "auth_status";
+        response["authEnabled"] = m_auth.isAuthEnabled();
+        response["authenticated"] = m_auth.isAuthenticated(hdl) || m_auth.isOpenMode();
+        response["success"] = true;
     }
 #ifdef HAVE_FFMPEG
     else if (command == "play_video") {
@@ -209,6 +332,5 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["success"] = false;
     }
 
-    Json::FastWriter writer;
-    server.send(hdl, writer.write(response), websocketpp::frame::opcode::text);
+    sendJson(hdl, response);
 }

@@ -189,6 +189,7 @@ set(SOURCES
     texture_manager.cpp
     websocket_server.cpp
     mdns_advertiser.cpp
+    auth_manager.cpp
 )
 
 if(NOT DFB_ONLY)

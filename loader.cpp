@@ -73,15 +73,19 @@ Texture Loader::LoadTexture(std::string textureFilename, ColorFormat format)
     // For UYVY, we need to load raw data
     if (format == ColorFormat::UYVY) {
         std::vector<char> buffer = readFile(getTextureInPath(textureFilename));
-        texture.width = 512;
-        texture.height = 512;
-        texture.channels = 4; // UYVY is 4 channels
-        texture.pixels = new unsigned char[buffer.size()];
-        std::memcpy(texture.pixels, buffer.data(), buffer.size());
+        std::vector<unsigned char> data(buffer.begin(), buffer.end());
+        texture.setOwnedPixels(std::move(data), 512, 512, 4, format);
     } else {
-        texture.pixels = stbi_load(getTextureInPath(textureFilename).c_str(), 
-                                 &texture.width, &texture.height, 
-                                 &texture.channels, STBI_rgb_alpha);
+        int w, h, ch;
+        unsigned char* raw = stbi_load(getTextureInPath(textureFilename).c_str(),
+                                       &w, &h, &ch, STBI_rgb_alpha);
+        if (!raw) {
+            throw std::runtime_error("failed to load texture image!");
+        }
+        size_t size = static_cast<size_t>(w) * h * 4;
+        std::vector<unsigned char> data(raw, raw + size);
+        stbi_image_free(raw);
+        texture.setOwnedPixels(std::move(data), w, h, ch, format);
     }
 
     if (!texture.pixels) {

@@ -13,36 +13,54 @@ pkgs.mkShell {
       jinja2
     ]))
     extra-cmake-modules
-    
+
     # C++ standard library
     stdenv.cc.cc.lib
     libcxx
-    
-    # Dependencies
+
+    # Common dependencies
     glfw3
+    ffmpeg
+
+    # Optional but useful
+    ccache
+  ]
+  ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+    # Graphics / display
     directfb
     libGL
-    xorg.libX11
-    
+    libx11
+
     # Wayland support
     wayland
     libxkbcommon
     libffi
-    
+
     # mDNS / Service Discovery
     avahi
-    
-    # Optional but useful
+
+    # Debugging (Linux only)
     gdb
     valgrind
-    ccache
   ];
 
   shellHook = ''
-    echo "🎬 Rendermatic development environment loaded"
+    # Wrap cmake so find_package(Python) always uses the nix Python (has jinja2 for GLAD)
+    _nix_python="$(which python3)"
+    cmake() {
+      case "$1" in
+        --build|--install|--open)
+          command cmake "$@" ;;
+        *)
+          command cmake -DPython_EXECUTABLE="$_nix_python" -DPython3_EXECUTABLE="$_nix_python" "$@" ;;
+      esac
+    }
+    export -f cmake
+
+    echo "Rendermatic development environment loaded"
     echo "Available commands:"
     echo "  mkdir build && cd build && cmake .. && cmake --build ."
-    echo "  # or for DirectFB-only:"
+    echo "  # or for DirectFB-only (Linux):"
     echo "  mkdir build && cd build && cmake -DDFB_ONLY=ON .. && cmake --build ."
   '';
 }
