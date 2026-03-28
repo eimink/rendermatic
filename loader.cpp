@@ -18,7 +18,11 @@ std::vector<char> Loader::readFile(const std::string& filename) {
         throw std::runtime_error("failed to open file!");
     }
 
-    size_t fileSize = (size_t)file.tellg();
+    auto pos = file.tellg();
+    if (pos < 0) {
+        throw std::runtime_error("failed to determine file size!");
+    }
+    size_t fileSize = static_cast<size_t>(pos);
     std::vector<char> buffer(fileSize);
     file.seekg(0);
     file.read(buffer.data(), fileSize);

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 #include <chrono>
 
 class TextureManager {
@@ -17,11 +18,11 @@ public:
     // Load a specific texture by filename
     bool loadTexture(const std::string& filename);
 
-    // Get current texture
-    Texture* getCurrentTexture() const { return currentTexture; };
+    // Get a safe copy of the current texture (thread-safe)
+    Texture getCurrentTextureCopy() const;
 
     // Get current texture name
-    std::string getCurrentTextureName() const { return currentTextureName; }
+    std::string getCurrentTextureName() const;
 
     // Set current texture by name (auto-loads if not in memory)
     bool setCurrentTexture(const std::string& name);
@@ -37,8 +38,10 @@ public:
 
 private:
     // Unload textures not used within the retention period (never the active one)
+    // Must be called with m_mutex held
     void cleanupUnused();
 
+    mutable std::mutex m_mutex;
     std::map<std::string, Texture> textures;
     std::map<std::string, std::chrono::steady_clock::time_point> lastUsed;
     std::vector<std::string> availableTextures;

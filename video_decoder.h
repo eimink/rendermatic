@@ -56,7 +56,7 @@ private:
     std::atomic<bool> m_active{false};
 
     Texture m_currentFrame;
-    std::mutex m_frameMutex;
+    mutable std::mutex m_frameMutex;
     bool m_newFrameAvailable = false;
 
     std::string m_source;

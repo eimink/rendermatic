@@ -14,12 +14,12 @@ public:
     bool shouldClose() const override;
 
 private:
-    IDirectFB* m_dfb;
-    IDirectFBSurface* m_primary;
-    IDirectFBSurface* m_texture;
-    bool m_shouldClose;
-    int m_width;
-    int m_height;
+    IDirectFB* m_dfb = nullptr;
+    IDirectFBSurface* m_primary = nullptr;
+    IDirectFBSurface* m_texture = nullptr;
+    bool m_shouldClose = false;
+    int m_width = 0;
+    int m_height = 0;
 };
 
 #endif // HAVE_DIRECTFB

@@ -3,6 +3,7 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 #include <thread>
+#include <atomic>
 #include <functional>
 #include <json/json.h>
 #include "texture_manager.h"
@@ -48,7 +49,7 @@ private:
     wsserver server;
     std::thread serverThread;
     TextureManager& textureManager;
-    bool running;
+    std::atomic<bool> running{false};
     uint16_t port;
     MDNSAdvertiser* m_advertiser = nullptr;
     Configuration* m_config = nullptr;

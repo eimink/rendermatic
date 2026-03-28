@@ -182,6 +182,7 @@ bool VideoDecoder::isActive() const {
 }
 
 VideoDecoder::SourceInfo VideoDecoder::getSourceInfo() const {
+    std::lock_guard<std::mutex> lock(m_frameMutex);
     SourceInfo info;
     info.source = m_source;
     if (!m_ff || !m_ff->codecCtx) return info;
@@ -209,7 +210,7 @@ void VideoDecoder::decoderLoop() {
 
     int w = m_ff->codecCtx->width;
     int h = m_ff->codecCtx->height;
-    int rgbaSize = w * h * 4;
+    size_t rgbaSize = static_cast<size_t>(w) * h * 4;
 
     // Calculate frame duration for pacing
     AVStream* stream = m_ff->formatCtx->streams[m_ff->videoStreamIndex];

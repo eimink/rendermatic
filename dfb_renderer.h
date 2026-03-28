@@ -32,9 +32,10 @@ private:
     unsigned int m_texture = 0;
 
     Loader m_loader;
-    int m_width, m_height;
-    int m_colorFormatLocation;
-    int m_scalingLocation;
+    int m_width = 0;
+    int m_height = 0;
+    int m_colorFormatLocation = -1;
+    int m_scalingLocation = -1;
 
     // Vertex data
     float m_vertices[20] = {

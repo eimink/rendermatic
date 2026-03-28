@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     textureManager.setCurrentTexture("default.jpg");
-    Texture* displayTexture = textureManager.getCurrentTexture();
+    Texture displayTexture = textureManager.getCurrentTextureCopy();
 
     if (config.ndiMode) {
         ndiReceiver = std::make_unique<NDIReceiver>();
@@ -130,15 +130,16 @@ int main(int argc, char* argv[]) {
     while (!renderer->shouldClose()) {
         renderer->processInput();
 
-        if (textureManager.getCurrentTextureName() != textureName) {
-            displayTexture = textureManager.getCurrentTexture();
-            textureName = textureManager.getCurrentTextureName();
+        std::string currentName = textureManager.getCurrentTextureName();
+        if (currentName != textureName) {
+            displayTexture = textureManager.getCurrentTextureCopy();
+            textureName = currentName;
         }
 
         if (config.ndiMode && ndiReceiver) {
             Texture currentFrame;
             if (ndiReceiver->getLatestFrame(currentFrame)) {
-                *displayTexture = currentFrame;
+                displayTexture = currentFrame;
             }
         }
 
@@ -152,7 +153,9 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
-        renderer->render(*displayTexture);
+        if (displayTexture.isValid()) {
+            renderer->render(displayTexture);
+        }
     }
 
     if (ndiReceiver) {

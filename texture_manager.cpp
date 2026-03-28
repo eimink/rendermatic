@@ -12,6 +12,7 @@ TextureManager::~TextureManager() {
 }
 
 void TextureManager::scanTextureDirectory() {
+    std::lock_guard<std::mutex> lock(m_mutex);
     availableTextures.clear();
 
     for (const auto& entry : std::filesystem::directory_iterator(TEXTURE_PATH)) {
@@ -27,6 +28,7 @@ void TextureManager::scanTextureDirectory() {
 }
 
 bool TextureManager::loadTexture(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (textures.find(filename) != textures.end()) {
         lastUsed[filename] = std::chrono::steady_clock::now();
         return true;
@@ -48,11 +50,26 @@ bool TextureManager::loadTexture(const std::string& filename) {
 }
 
 bool TextureManager::setCurrentTexture(const std::string& name) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+
     // Auto-load if not already in memory
     if (textures.find(name) == textures.end()) {
-        if (!loadTexture(name)) {
-            return false;
+        // Release lock for I/O, then re-acquire
+        m_mutex.unlock();
+        Loader loader;
+        Texture texture;
+        bool loaded = false;
+        try {
+            texture = loader.LoadTexture(name, ColorFormat::RGBA);
+            loaded = texture.pixels != nullptr;
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to load texture: " << e.what() << std::endl;
         }
+        m_mutex.lock();
+
+        if (!loaded) return false;
+        textures[name] = std::move(texture);
+        lastUsed[name] = std::chrono::steady_clock::now();
     }
 
     auto it = textures.find(name);
@@ -66,16 +83,36 @@ bool TextureManager::setCurrentTexture(const std::string& name) {
     return false;
 }
 
+Texture TextureManager::getCurrentTextureCopy() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (currentTexture) {
+        return *currentTexture;  // Safe copy thanks to proper copy constructor
+    }
+    return Texture{};
+}
+
+std::string TextureManager::getCurrentTextureName() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return currentTextureName;
+}
+
 std::vector<std::string> TextureManager::getAvailableTextures() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
     return availableTextures;
 }
 
 void TextureManager::unloadTexture(const std::string& name) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (name == currentTextureName) {
+        currentTexture = nullptr;
+        currentTextureName.clear();
+    }
     textures.erase(name);
     lastUsed.erase(name);
 }
 
 void TextureManager::unloadAll() {
+    std::lock_guard<std::mutex> lock(m_mutex);
     textures.clear();
     lastUsed.clear();
     currentTexture = nullptr;

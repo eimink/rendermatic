@@ -1,5 +1,6 @@
 #include "auth_manager.h"
 #include "picosha2.h"
+#include <algorithm>
 
 AuthManager::AuthManager() = default;
 
@@ -62,7 +63,16 @@ bool AuthManager::tryAuthenticate(connection_hdl hdl, const std::string& key) {
     const std::string& ip = connIt->second.remoteIp;
     std::string keyHash = sha256Hex(key);
 
-    if (keyHash == m_keyHash) {
+    // Constant-time comparison to prevent timing side-channel attacks
+    bool match = (keyHash.size() == m_keyHash.size());
+    volatile unsigned char result = 0;
+    size_t len = std::min(keyHash.size(), m_keyHash.size());
+    for (size_t i = 0; i < len; i++) {
+        result |= keyHash[i] ^ m_keyHash[i];
+    }
+    match = match && (result == 0);
+
+    if (match) {
         connIt->second.authenticated = true;
         // Reset rate limit on success
         m_rateLimits.erase(ip);

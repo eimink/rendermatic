@@ -6,9 +6,35 @@
 #endif
 #include <unistd.h>
 
+namespace {
+    // Reject path traversal attempts in filenames
+    bool isSafeFilename(const std::string& name) {
+        if (name.empty()) return false;
+        if (name.find("..") != std::string::npos) return false;
+        if (name.find('/') != std::string::npos) return false;
+        if (name.find('\\') != std::string::npos) return false;
+        if (name[0] == '.') return false;  // No hidden files
+        return true;
+    }
+
+    // Whitelist allowed URL schemes for video sources
+    bool isSafeVideoSource(const std::string& source) {
+        if (source.empty()) return false;
+        // Allow known streaming protocols
+        if (source.rfind("rtmp://", 0) == 0) return true;
+        if (source.rfind("rtsp://", 0) == 0) return true;
+        if (source.rfind("srt://", 0) == 0) return true;
+        if (source.rfind("http://", 0) == 0) return true;
+        if (source.rfind("https://", 0) == 0) return true;
+        // For local paths, require safe filename (no traversal)
+        return isSafeFilename(source);
+    }
+}
+
 WebSocketServer::WebSocketServer(TextureManager& tm, uint16_t port)
-    : textureManager(tm), running(false), port(port) {
+    : textureManager(tm), port(port) {
     server.clear_access_channels(websocketpp::log::alevel::all);
+    server.set_max_message_size(64 * 1024);  // 64KB max message size
     server.init_asio();
     server.set_open_handler(bind(&WebSocketServer::onOpen, this, std::placeholders::_1));
     server.set_close_handler(bind(&WebSocketServer::onClose, this, std::placeholders::_1));
@@ -181,15 +207,23 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
     }
     else if (command == "load_texture") {
         std::string textureName = root["texture"].asString();
-        bool success = textureManager.loadTexture(textureName);
         response["command"] = "load_texture_response";
-        response["success"] = success;
+        if (!isSafeFilename(textureName)) {
+            response["success"] = false;
+            response["message"] = "Invalid texture filename";
+        } else {
+            response["success"] = textureManager.loadTexture(textureName);
+        }
     }
     else if (command == "set_texture") {
         std::string textureName = root["texture"].asString();
-        bool success = textureManager.setCurrentTexture(textureName);
         response["command"] = "set_texture_response";
-        response["success"] = success;
+        if (!isSafeFilename(textureName)) {
+            response["success"] = false;
+            response["message"] = "Invalid texture filename";
+        } else {
+            response["success"] = textureManager.setCurrentTexture(textureName);
+        }
     }
     else if (command == "get_device_info") {
         response["command"] = "device_info";
@@ -277,6 +311,12 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             response["message"] = "Missing 'source' field";
         } else {
             std::string source = root["source"].asString();
+            if (!isSafeVideoSource(source)) {
+                response["success"] = false;
+                response["message"] = "Invalid video source. Use a streaming URL (rtmp/rtsp/srt/http) or a local filename.";
+                sendJson(hdl, response);
+                return;
+            }
             bool loop = root.get("loop", true).asBool();
             m_videoDecoder->stop();
             m_videoDecoder->setLoop(loop);

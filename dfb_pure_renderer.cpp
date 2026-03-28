@@ -2,8 +2,7 @@
 #include "dfb_pure_renderer.h"
 #include <iostream>
 
-DirectFBPureRenderer::DirectFBPureRenderer() 
-    : m_dfb(nullptr), m_primary(nullptr), m_texture(nullptr), m_shouldClose(false) {}
+DirectFBPureRenderer::DirectFBPureRenderer() = default;
 
 DirectFBPureRenderer::~DirectFBPureRenderer() {
     if (m_texture) {
@@ -69,8 +68,10 @@ void DirectFBPureRenderer::processInput() {
 }
 
 void DirectFBPureRenderer::render(const Texture& texture) {
-    if (!m_texture || 
-        texture.width != m_width || 
+    if (!texture.pixels) return;
+
+    if (!m_texture ||
+        texture.width != m_width ||
         texture.height != m_height) {
         
         if (m_texture) {
