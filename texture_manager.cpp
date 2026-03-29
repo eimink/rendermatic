@@ -50,12 +50,12 @@ bool TextureManager::loadTexture(const std::string& filename) {
 }
 
 bool TextureManager::setCurrentTexture(const std::string& name) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
 
     // Auto-load if not already in memory
     if (textures.find(name) == textures.end()) {
         // Release lock for I/O, then re-acquire
-        m_mutex.unlock();
+        lock.unlock();
         Loader loader;
         Texture texture;
         bool loaded = false;
@@ -65,7 +65,7 @@ bool TextureManager::setCurrentTexture(const std::string& name) {
         } catch (const std::exception& e) {
             std::cerr << "Failed to load texture: " << e.what() << std::endl;
         }
-        m_mutex.lock();
+        lock.lock();
 
         if (!loaded) return false;
         textures[name] = std::move(texture);

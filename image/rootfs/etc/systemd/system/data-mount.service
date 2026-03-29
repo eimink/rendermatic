@@ -1,0 +1,12 @@
+[Unit]
+Description=Rendermatic data partition setup and provisioning
+After=local-fs.target
+Before=rendermatic.service ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/data-mount.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

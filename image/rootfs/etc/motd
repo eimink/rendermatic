@@ -1,0 +1,10 @@
+
+  Rendermatic Display Engine
+
+  Media content:  /data/media/    (images, videos)
+  Configuration:  /data/config.json
+  Logs:           /data/logs/
+  NDI runtime:    /data/lib/libndi.so  (optional)
+
+  Service:        sudo systemctl restart rendermatic
+

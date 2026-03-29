@@ -1,0 +1,18 @@
+[Unit]
+Description=Rendermatic Graphics Application
+After=network-online.target data-mount.service avahi-daemon.service
+Wants=network-online.target
+Requires=data-mount.service
+
+[Service]
+Type=simple
+WorkingDirectory=/rendermatic
+ExecStartPre=/bin/sh -c 'test -e /dev/fb0'
+ExecStart=/rendermatic/rendermatic
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/data/logs/rendermatic.log
+StandardError=append:/data/logs/rendermatic.log
+
+[Install]
+WantedBy=multi-user.target

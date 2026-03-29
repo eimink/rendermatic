@@ -16,11 +16,11 @@ Pre-built disk images are available from [GitHub Releases](../../releases) for:
 
 | Image | Target |
 |-------|--------|
-| `rendermatic-rpi.img.gz` | Raspberry Pi 3/4/5 |
-| `rendermatic-generic-arm64.img.gz` | Generic aarch64 VMs (VirtualBox, UTM, QEMU) |
-| `rendermatic-x86_64.img.gz` | x86_64 PCs and VMs (VirtualBox, VMware) |
+| `rendermatic-rpi.img.gz` | Raspberry Pi 4/5 |
+| `rendermatic-generic-arm64.img.gz` | Generic aarch64 VMs (VirtualBox, QEMU) |
+| `rendermatic-x86_64.img.gz` | x86_64 PCs and VMs |
 
-Images boot into a read-only Alpine Linux system with Rendermatic running automatically on the framebuffer. A writable data partition holds media files, config, and SSH keys. The display resolution is auto-detected from the connected display.
+Images boot into a read-only Debian Linux system with Rendermatic running automatically on the framebuffer. A writable data partition holds media files, config, and SSH keys. The display resolution is auto-detected from the connected display.
 
 ### Quick Start
 
@@ -68,7 +68,7 @@ Connect via SSH:
 ssh render@rendermatic-ca6bf5.local
 ```
 
-The default password for the `render` user is `m4tic!` (SSH is key-only by default, password works on the console).
+The default password for the `render` user is `m4tic!` (both SSH and console).
 
 ### Flash Script (advanced)
 
@@ -90,7 +90,7 @@ sudo ./image/flash.sh rendermatic-rpi.img.gz /dev/sdX --github eimink --github o
 | Partition | Size | Filesystem | Mount | Description |
 |-----------|------|------------|-------|-------------|
 | p1 | 128MB | FAT32 | /boot | Kernel, bootloader, SSH key provisioning files |
-| p2 | ~255MB | ext4 | / | Read-only root filesystem |
+| p2 | ~1.7GB | ext4 | / | Read-only root filesystem |
 | p3 | 128MB | ext4 | /data | Writable: media, config.json, logs, SSH keys |
 
 ### Delivering Content

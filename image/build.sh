@@ -16,32 +16,29 @@ else
 fi
 
 TARGET="${1:-rpi}"
-IMAGE_SIZE_MB="${2:-512}"
+IMAGE_SIZE_MB="${2:-2048}"
 
 case "$TARGET" in
     rpi)
         PLATFORM="linux/arm64"
-        ARCH_LABEL="aarch64"
         ;;
     generic-arm64|vm-arm64)
         PLATFORM="linux/arm64"
-        ARCH_LABEL="aarch64"
         ;;
     x86_64|amd64|generic-amd64)
         PLATFORM="linux/amd64"
-        ARCH_LABEL="x86_64"
         TARGET="x86_64"
         ;;
     *)
         echo "Usage: $0 <target> [image_size_mb]"
         echo ""
         echo "Targets:"
-        echo "  rpi            Raspberry Pi 3/4/5 (default)"
-        echo "  generic-arm64  Generic aarch64 VM (UTM, QEMU, Parallels)"
-        echo "  x86_64         x86_64 (PC, VirtualBox, VMware)"
+        echo "  rpi            Raspberry Pi 4/5 (default)"
+        echo "  generic-arm64  Generic aarch64 VM (VirtualBox, QEMU)"
+        echo "  x86_64         x86_64 PC / VM"
         echo ""
         echo "Options:"
-        echo "  image_size_mb  Total image size in MB (default: 512)"
+        echo "  image_size_mb  Total image size in MB (default: 2048)"
         exit 1
         ;;
 esac
@@ -63,15 +60,16 @@ echo "--- Building rootfs ---"
 
 $CTR build \
     --platform "$PLATFORM" \
+    --build-arg "TARGET=${TARGET}" \
     --file "${SCRIPT_DIR}/Dockerfile" \
-    --tag "rendermatic-rootfs:${ARCH_LABEL}" \
+    --tag "rendermatic-rootfs:${TARGET}" \
     "$PROJECT_DIR"
 
 # --- Step 2: Export rootfs ---
 echo "--- Exporting rootfs ---"
 
-ROOTFS_TAR="${OUTPUT_DIR}/rootfs-${ARCH_LABEL}.tar"
-CONTAINER_ID=$($CTR create --platform "$PLATFORM" "rendermatic-rootfs:${ARCH_LABEL}" /bin/true)
+ROOTFS_TAR="${OUTPUT_DIR}/rootfs-${TARGET}.tar"
+CONTAINER_ID=$($CTR create --platform "$PLATFORM" "rendermatic-rootfs:${TARGET}" /bin/true)
 $CTR export "$CONTAINER_ID" > "$ROOTFS_TAR"
 $CTR rm "$CONTAINER_ID" >/dev/null
 
@@ -84,8 +82,8 @@ $CTR run --rm --privileged \
     --platform "$PLATFORM" \
     -v "${OUTPUT_DIR}:/output:z" \
     -v "${SCRIPT_DIR}/mkimage.sh:/mkimage.sh:ro,z" \
-    alpine:3.21 \
-    sh -c "apk add --no-cache e2fsprogs dosfstools mtools util-linux alpine-keys mkinitfs && sh /mkimage.sh /output/rootfs-${ARCH_LABEL}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB} ${TARGET}"
+    debian:bookworm-slim \
+    sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends e2fsprogs dosfstools mtools fdisk kmod >/dev/null 2>&1 && sh /mkimage.sh /output/rootfs-${TARGET}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB} ${TARGET}"
 
 rm -f "$ROOTFS_TAR"
 
@@ -97,8 +95,8 @@ if [ "${VMDK:-0}" = "1" ] && [ "$TARGET" != "rpi" ]; then
     $CTR run --rm \
         --platform "$PLATFORM" \
         -v "${OUTPUT_DIR}:/output:z" \
-        alpine:3.21 \
-        sh -c "apk add --no-cache qemu-img && qemu-img convert -f raw -O vmdk /output/${IMAGE_NAME}.img /output/${IMAGE_NAME}.vmdk"
+        debian:bookworm-slim \
+        sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends qemu-utils >/dev/null 2>&1 && qemu-img convert -f raw -O vmdk /output/${IMAGE_NAME}.img /output/${IMAGE_NAME}.vmdk"
     echo "VMDK: ${VMDK_FILE} ($(du -h "${VMDK_FILE}" | cut -f1))"
 fi
 

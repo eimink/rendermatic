@@ -1,0 +1,13 @@
+[Unit]
+Description=Generate unique hostname from MAC address
+Before=network-online.target systemd-hostnamed.service
+After=systemd-modules-load.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hostname-gen.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

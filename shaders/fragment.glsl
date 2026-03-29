@@ -28,8 +28,8 @@ vec4 UYVYtoRGBA(sampler2D tex, vec2 texCoord) {
     float V = texel.b;
     float Y2 = texel.a;
     
-    // Check if we're on an odd or even pixel
-    bool isOdd = mod(texCoord.x * textureSize(tex, 0).x, 2.0) >= 1.0;
+    // Check if we're on an odd or even pixel within this UYVY macro-pixel
+    bool isOdd = fract(texCoord.x * textureSize(tex, 0).x) >= 0.5;
     float Y = isOdd ? Y2 : Y1;
     
     return YUVtoRGB(Y, U, V);

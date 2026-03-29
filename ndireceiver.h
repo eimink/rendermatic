@@ -18,7 +18,8 @@ public:
     bool isRuntimeLoaded() const { return m_ndiLib != nullptr; }
 
     void start();
-    void stop();
+    void stop();          // Blocking — waits for thread to finish
+    void requestStop();   // Non-blocking — signals stop, thread cleans up async
     bool getLatestFrame(Texture& outTexture);
 
     // Source discovery and selection
@@ -33,6 +34,7 @@ private:
     std::thread m_thread;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_connected{false};
+    std::atomic<bool> m_sourceChanged{false};
     Texture m_currentFrame;
     mutable std::mutex m_frameMutex;
     std::string m_sourceName;
@@ -42,7 +44,7 @@ private:
     void* m_libHandle = nullptr;
     const NDIlib_v6* m_ndiLib = nullptr;
 
-    // NDI instances (opaque pointers)
+    // NDI instances — owned exclusively by the receiver thread
     void* m_ndiFind = nullptr;
     void* m_ndiRecv = nullptr;
 };

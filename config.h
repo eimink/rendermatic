@@ -4,10 +4,10 @@
 
 struct Configuration {
     bool fullscreen = true;
-    bool fullscreenScaling = false;
+    bool fullscreenScaling = true;
     int monitorIndex = 0;
     bool ndiMode = false;
-    std::string ndiSourceName = "";  // Preferred NDI source (empty = first found)
+    std::string ndiSourceName = "";  // NDI source to connect to (empty = idle, no auto-connect)
     std::string backend = "glfw";
     int width = 1920;
     int height = 1080;

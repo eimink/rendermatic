@@ -54,6 +54,7 @@ WebSocketServer::~WebSocketServer() {
 void WebSocketServer::start() {
     if (!running) {
         running = true;
+        server.set_reuse_addr(true);
         server.listen(port);
         serverThread = std::thread(&WebSocketServer::run, this);
     }
@@ -297,6 +298,13 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["currentTexture"] = textureManager.getCurrentTextureName();
         response["authEnabled"] = m_auth.isAuthEnabled();
         response["ndiAvailable"] = m_ndiReceiver && m_ndiReceiver->isRuntimeLoaded();
+        if (m_config) {
+            response["ndiMode"] = m_config->ndiMode;
+        }
+        if (m_ndiReceiver) {
+            response["ndiConnected"] = m_ndiReceiver->isConnected();
+            response["ndiSource"] = m_ndiReceiver->getCurrentSourceName();
+        }
         response["success"] = true;
     }
     else if (command == "set_device_name") {
@@ -584,6 +592,7 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             }
             response["success"] = true;
             response["source"] = source;
+            response["connected"] = m_ndiReceiver->isConnected();
         }
     }
     else if (command == "get_ndi_status") {
@@ -600,7 +609,7 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
     else if (command == "stop_ndi") {
         response["command"] = "stop_ndi_response";
         if (m_ndiReceiver) {
-            m_ndiReceiver->stop();
+            m_ndiReceiver->requestStop();
             if (m_config) {
                 m_config->ndiMode = false;
                 m_config->saveToFile();

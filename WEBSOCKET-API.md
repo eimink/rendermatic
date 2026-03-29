@@ -311,7 +311,10 @@ Returns information about the device.
     "wsPort": 9002,
     "currentTexture": "logo.png",
     "authEnabled": true,
-    "ndiAvailable": false,
+    "ndiAvailable": true,
+    "ndiMode": true,
+    "ndiConnected": true,
+    "ndiSource": "LAPTOP (OBS)",
     "success": true
 }
 ```
@@ -324,6 +327,9 @@ Returns information about the device.
 | `currentTexture` | string | Filename of the currently active texture |
 | `authEnabled`    | bool   | Whether auth key is configured          |
 | `ndiAvailable`   | bool   | Whether NDI runtime is installed on device (hide NDI UI if `false`) |
+| `ndiMode`        | bool   | Whether NDI mode is currently active    |
+| `ndiConnected`   | bool   | Whether an NDI source is currently connected |
+| `ndiSource`      | string | Name of the connected/configured NDI source |
 
 **Response (unauthenticated, reduced):**
 ```json
@@ -827,6 +833,113 @@ The `#RENDERMATIC:LOOP=false` directive disables playlist looping (default is `t
 
 ---
 
+### NDI
+
+NDI (Network Device Interface) commands allow receiving real-time video from NDI sources on the local network. NDI commands are only functional when the NDI runtime library is installed on the device — check `ndiAvailable` in the `get_device_info` response. See [NDI.md](NDI.md) for installation and setup details.
+
+When NDI is active, the NDI video feed takes priority over static textures (but not video playback). Disconnecting from NDI or stopping NDI mode automatically reverts the display to the current texture.
+
+#### `scan_ndi_sources`
+
+Discovers NDI sources on the local network. Waits up to 2 seconds for sources to appear.
+
+**Request:**
+```json
+{ "command": "scan_ndi_sources" }
+```
+
+**Response:**
+```json
+{
+    "command": "ndi_sources",
+    "sources": ["LAPTOP (OBS)", "SWITCHER (Camera 1)", "GRAPHICS (CasparCG)"],
+    "success": true
+}
+```
+
+| Field     | Type     | Description                          |
+|-----------|----------|--------------------------------------|
+| `sources` | string[] | Discovered NDI source names          |
+
+---
+
+#### `set_ndi_source`
+
+Connects to a specific NDI source by name. Starts the receiver if not already running. The connection is asynchronous — the response includes the current `connected` state, which will typically be `false` until the receiver thread establishes the connection. Poll `get_ndi_status` to track when the connection is established.
+
+Setting an NDI source automatically enables NDI mode and persists the source name and mode to `config.json`. A specific source name is required — the receiver will not auto-connect to arbitrary sources.
+
+**Request:**
+```json
+{ "command": "set_ndi_source", "source": "LAPTOP (OBS)" }
+```
+
+| Parameter | Type   | Required | Description               |
+|-----------|--------|----------|---------------------------|
+| `source`  | string | yes      | NDI source name to connect to |
+
+**Response (success):**
+```json
+{
+    "command": "set_ndi_source_response",
+    "success": true,
+    "source": "LAPTOP (OBS)",
+    "connected": false
+}
+```
+
+| Field       | Type   | Description                                 |
+|-------------|--------|---------------------------------------------|
+| `source`    | string | The requested source name                   |
+| `connected` | bool   | Whether the receiver is connected (typically `false` initially) |
+
+---
+
+#### `get_ndi_status`
+
+Returns the current NDI connection state.
+
+**Request:**
+```json
+{ "command": "get_ndi_status" }
+```
+
+**Response:**
+```json
+{
+    "command": "ndi_status",
+    "connected": true,
+    "source": "LAPTOP (OBS)",
+    "success": true
+}
+```
+
+| Field       | Type   | Description                             |
+|-------------|--------|-----------------------------------------|
+| `connected` | bool   | Whether an NDI source is currently connected |
+| `source`    | string | Name of the connected/configured source (empty when disconnected) |
+
+---
+
+#### `stop_ndi`
+
+Stops the NDI receiver and disables NDI mode. The display reverts to the current texture. The mode change is persisted to `config.json`. The configured source name is cleared.
+
+**Request:**
+```json
+{ "command": "stop_ndi" }
+```
+
+**Response:**
+```json
+{
+    "command": "stop_ndi_response",
+    "success": true
+}
+```
+
+---
+
 ## Command Summary
 
 | Command            | Response command          | Auth required | Description                          |
@@ -967,7 +1080,7 @@ No authentication required — useful for scanning multiple devices to find the 
 - **Handle `auth_status` on connect.** The first message received after connecting is always `auth_status`. Use it to decide whether to prompt for a key or proceed directly to commands.
 - **One server-initiated message.** The `auth_status` on connect is the only message the server sends without a request. All other communication is request/response.
 - **One response per request.** The server does not push unsolicited messages beyond the initial `auth_status`. The control client must poll (e.g. `get_video_status`) to track state changes.
-- **Video overrides textures.** While video is active, texture commands still work (loading/scanning), but the display shows the video feed. Call `stop_video` to return to texture display.
+- **Display priority: video > NDI > textures.** Video playback takes highest priority; when active, NDI and textures are hidden. NDI takes priority over textures. Stopping video reveals NDI (if active) or the current texture. Stopping NDI reveals the current texture.
 - **Streams auto-reconnect.** Network stream sources (RTMP, RTSP, SRT) are configured with automatic reconnection. Check `get_video_status` to monitor whether the stream is still `active`.
 - **Config persistence.** `play_video`, `set_device_name`, `set_auth_key`, and `clear_auth_key` persist their state to `config.json` on the device. On restart, the device will resume with the last known configuration.
 - **Key management.** The plaintext key is never stored on disk -- only its SHA-256 hash. To set the initial key, connect while in open mode and call `set_auth_key`. To reset a forgotten key, manually clear `authKeyHash` from `config.json` and restart the device.

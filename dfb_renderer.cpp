@@ -118,12 +118,35 @@ void DirectFBRenderer::render(const Texture& texture) {
     glUniform1i(m_rotationLocation, m_displayRotation);
     
     glBindTexture(GL_TEXTURE_2D, m_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width, texture.height, 
+    int uploadWidth = (texture.format == ColorFormat::UYVY) ? texture.width / 2 : texture.width;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uploadWidth, texture.height,
                  0, GL_RGBA, GL_UNSIGNED_BYTE, texture.pixels);
 
     glBindVertexArray(m_vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     
+    m_gl->Unlock(m_gl);
+}
+
+void DirectFBRenderer::renderOverlay(const Texture& overlay) {
+    if (!m_gl->Lock(m_gl)) return;
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(m_shader);
+    glUniform1i(m_colorFormatLocation, static_cast<int>(ColorFormat::RGBA));
+    glUniform1i(m_scalingLocation, m_fullscreenScaling ? 1 : 0);
+    glUniform1i(m_rotationLocation, 0);
+
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, overlay.width, overlay.height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, overlay.pixels);
+
+    glBindVertexArray(m_vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    glDisable(GL_BLEND);
     m_gl->Unlock(m_gl);
 }
 

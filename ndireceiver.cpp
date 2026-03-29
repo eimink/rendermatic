@@ -1,5 +1,6 @@
 #include "ndireceiver.h"
 #include <iostream>
+#include <cstring>
 #include <dlfcn.h>
 
 // Search paths for NDI runtime library
@@ -57,39 +58,53 @@ bool NDIReceiver::loadRuntime() {
         return false;
     }
 
-    // Resolve the NDI function table
-    auto loadFunc = reinterpret_cast<const NDIlib_v6* (*)()>(
-        dlsym(m_libHandle, "NDIlib_v6_load"));
+    try {
+        // Resolve the NDI function table
+        auto loadFunc = reinterpret_cast<const NDIlib_v6* (*)()>(
+            dlsym(m_libHandle, "NDIlib_v6_load"));
 
-    if (!loadFunc) {
-        // Try v5 as fallback
-        auto loadFuncV5 = reinterpret_cast<const NDIlib_v5* (*)()>(
-            dlsym(m_libHandle, "NDIlib_v5_load"));
-        if (loadFuncV5) {
-            // v5 is a subset of v6, safe to cast
-            m_ndiLib = reinterpret_cast<const NDIlib_v6*>(loadFuncV5());
+        if (!loadFunc) {
+            // Try v5 as fallback
+            auto loadFuncV5 = reinterpret_cast<const NDIlib_v5* (*)()>(
+                dlsym(m_libHandle, "NDIlib_v5_load"));
+            if (loadFuncV5) {
+                // v5 is a subset of v6, safe to cast
+                m_ndiLib = reinterpret_cast<const NDIlib_v6*>(loadFuncV5());
+            }
+        } else {
+            m_ndiLib = loadFunc();
         }
-    } else {
-        m_ndiLib = loadFunc();
-    }
 
-    if (!m_ndiLib) {
-        std::cerr << "NDI: Failed to load function table" << std::endl;
+        if (!m_ndiLib) {
+            std::cerr << "NDI: Failed to load function table" << std::endl;
+            dlclose(m_libHandle);
+            m_libHandle = nullptr;
+            return false;
+        }
+
+        if (!m_ndiLib->initialize()) {
+            std::cerr << "NDI: Failed to initialize" << std::endl;
+            m_ndiLib = nullptr;
+            dlclose(m_libHandle);
+            m_libHandle = nullptr;
+            return false;
+        }
+
+        std::cout << "NDI: Initialized (" << m_ndiLib->version() << ")" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "NDI: Runtime failed to initialize: " << e.what() << std::endl;
+        m_ndiLib = nullptr;
         dlclose(m_libHandle);
         m_libHandle = nullptr;
         return false;
-    }
-
-    if (!m_ndiLib->initialize()) {
-        std::cerr << "NDI: Failed to initialize" << std::endl;
+    } catch (...) {
+        std::cerr << "NDI: Runtime failed to initialize (unknown error)" << std::endl;
         m_ndiLib = nullptr;
         dlclose(m_libHandle);
         m_libHandle = nullptr;
         return false;
     }
-
-    std::cout << "NDI: Initialized (" << m_ndiLib->version() << ")" << std::endl;
-    return true;
 }
 
 void NDIReceiver::start() {
@@ -110,6 +125,19 @@ void NDIReceiver::stop() {
     m_connected = false;
 }
 
+void NDIReceiver::requestStop() {
+    m_running = false;
+    m_connected = false;
+    {
+        std::lock_guard<std::mutex> lock(m_sourceMutex);
+        m_sourceName.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        m_currentFrame = Texture();
+    }
+}
+
 bool NDIReceiver::getLatestFrame(Texture& outTexture) {
     std::lock_guard<std::mutex> lock(m_frameMutex);
     if (m_currentFrame.isValid()) {
@@ -123,26 +151,23 @@ std::vector<std::string> NDIReceiver::getAvailableSources() {
     std::vector<std::string> sources;
     if (!m_ndiLib) return sources;
 
-    // Create finder if not exists
-    if (!m_ndiFind) {
-        NDIlib_find_create_t findDesc = {};
-        findDesc.show_local_sources = true;
-        m_ndiFind = m_ndiLib->find_create_v2(&findDesc);
-    }
+    // Use a temporary finder to avoid conflicts with the receiver thread
+    NDIlib_find_create_t findDesc = {};
+    findDesc.show_local_sources = true;
+    auto* pFind = m_ndiLib->find_create_v2(&findDesc);
+    if (!pFind) return sources;
 
-    if (!m_ndiFind) return sources;
-
-    auto* pFind = static_cast<NDIlib_find_instance_t>(m_ndiFind);
-
-    // Wait briefly for sources
-    m_ndiLib->find_wait_for_sources(pFind, 2000);
+    m_ndiLib->find_wait_for_sources(static_cast<NDIlib_find_instance_t>(pFind), 2000);
 
     uint32_t numSources = 0;
-    const NDIlib_source_t* pSources = m_ndiLib->find_get_current_sources(pFind, &numSources);
+    const NDIlib_source_t* pSources = m_ndiLib->find_get_current_sources(
+        static_cast<NDIlib_find_instance_t>(pFind), &numSources);
 
     for (uint32_t i = 0; i < numSources; i++) {
         sources.push_back(pSources[i].p_ndi_name);
     }
+
+    m_ndiLib->find_destroy(static_cast<NDIlib_find_instance_t>(pFind));
     return sources;
 }
 
@@ -151,12 +176,7 @@ bool NDIReceiver::setSource(const std::string& sourceName) {
         std::lock_guard<std::mutex> lock(m_sourceMutex);
         m_sourceName = sourceName;
     }
-
-    if (m_running && m_ndiRecv && m_ndiLib) {
-        m_ndiLib->recv_destroy(static_cast<NDIlib_recv_instance_t>(m_ndiRecv));
-        m_ndiRecv = nullptr;
-        m_connected = false;
-    }
+    m_sourceChanged = true;
     return true;
 }
 
@@ -173,93 +193,136 @@ void NDIReceiver::receiverLoop() {
     if (!m_ndiLib) return;
 
     while (m_running) {
-        // Ensure we have a finder
-        if (!m_ndiFind) {
-            NDIlib_find_create_t findDesc = {};
-            findDesc.show_local_sources = true;
-            m_ndiFind = m_ndiLib->find_create_v2(&findDesc);
-            if (!m_ndiFind) {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
-            }
-        }
-
-        // Find and connect to target source
-        if (!m_ndiRecv) {
-            auto* pFind = static_cast<NDIlib_find_instance_t>(m_ndiFind);
-            m_ndiLib->find_wait_for_sources(pFind, 1000);
-
-            uint32_t numSources = 0;
-            const NDIlib_source_t* pSources = m_ndiLib->find_get_current_sources(pFind, &numSources);
-
-            const NDIlib_source_t* target = nullptr;
-            std::string wantedName;
-            {
-                std::lock_guard<std::mutex> lock(m_sourceMutex);
-                wantedName = m_sourceName;
-            }
-
-            for (uint32_t i = 0; i < numSources; i++) {
-                if (wantedName.empty() || wantedName == pSources[i].p_ndi_name) {
-                    target = &pSources[i];
-                    break;
+        try {
+            // Handle source change request from WS thread
+            if (m_sourceChanged.exchange(false)) {
+                if (m_ndiRecv) {
+                    m_ndiLib->recv_destroy(static_cast<NDIlib_recv_instance_t>(m_ndiRecv));
+                    m_ndiRecv = nullptr;
+                    m_connected = false;
+                    {
+                        std::lock_guard<std::mutex> lock(m_frameMutex);
+                        m_currentFrame = Texture();
+                    }
                 }
             }
 
-            if (!target) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                continue;
+            // Ensure we have a finder
+            if (!m_ndiFind) {
+                NDIlib_find_create_t findDesc = {};
+                findDesc.show_local_sources = true;
+                m_ndiFind = m_ndiLib->find_create_v2(&findDesc);
+                if (!m_ndiFind) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    continue;
+                }
             }
 
-            NDIlib_recv_create_v3_t recvDesc = {};
-            recvDesc.source_to_connect_to = *target;
-            recvDesc.color_format = NDIlib_recv_color_format_UYVY_BGRA;
-            recvDesc.bandwidth = NDIlib_recv_bandwidth_highest;
-            recvDesc.allow_video_fields = true;
-            recvDesc.p_ndi_recv_name = "Rendermatic";
-
-            m_ndiRecv = m_ndiLib->recv_create_v3(&recvDesc);
+            // Find and connect to target source
             if (!m_ndiRecv) {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
+                auto* pFind = static_cast<NDIlib_find_instance_t>(m_ndiFind);
+                m_ndiLib->find_wait_for_sources(pFind, 250);
+
+                uint32_t numSources = 0;
+                const NDIlib_source_t* pSources = m_ndiLib->find_get_current_sources(pFind, &numSources);
+
+                const NDIlib_source_t* target = nullptr;
+                std::string wantedName;
+                {
+                    std::lock_guard<std::mutex> lock(m_sourceMutex);
+                    wantedName = m_sourceName;
+                }
+
+                for (uint32_t i = 0; i < numSources; i++) {
+                    if (!wantedName.empty() && wantedName == pSources[i].p_ndi_name) {
+                        target = &pSources[i];
+                        break;
+                    }
+                }
+
+                if (!target) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    continue;
+                }
+
+                // Copy source name before creating receiver (pSources may be invalidated)
+                std::string connectedName = target->p_ndi_name;
+
+                NDIlib_recv_create_v3_t recvDesc = {};
+                recvDesc.source_to_connect_to = *target;
+                recvDesc.color_format = NDIlib_recv_color_format_RGBX_RGBA;
+                recvDesc.bandwidth = NDIlib_recv_bandwidth_highest;
+                recvDesc.allow_video_fields = true;
+                recvDesc.p_ndi_recv_name = "Rendermatic";
+
+                m_ndiRecv = m_ndiLib->recv_create_v3(&recvDesc);
+                if (!m_ndiRecv) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    continue;
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(m_sourceMutex);
+                    m_sourceName = connectedName;
+                }
+                m_connected = true;
+                std::cout << "NDI: Connected to " << connectedName << std::endl;
             }
 
-            {
-                std::lock_guard<std::mutex> lock(m_sourceMutex);
-                m_sourceName = target->p_ndi_name;
+            // Capture frames
+            auto* pRecv = static_cast<NDIlib_recv_instance_t>(m_ndiRecv);
+            NDIlib_video_frame_v2_t videoFrame;
+
+            auto frameType = m_ndiLib->recv_capture_v3(pRecv, &videoFrame, nullptr, nullptr, 16);
+
+            if (frameType == NDIlib_frame_type_video) {
+                int w = videoFrame.xres;
+                int h = videoFrame.yres;
+                ColorFormat fmt = (videoFrame.FourCC == NDIlib_FourCC_type_UYVY)
+                    ? ColorFormat::UYVY : ColorFormat::RGBA;
+
+                int bpp = (fmt == ColorFormat::UYVY) ? 2 : 4;
+                int expectedStride = w * bpp;
+                int srcStride = videoFrame.line_stride_in_bytes;
+                size_t dataSize = static_cast<size_t>(expectedStride) * h;
+                std::vector<unsigned char> pixels(dataSize);
+
+                if (srcStride == expectedStride) {
+                    memcpy(pixels.data(), videoFrame.p_data, dataSize);
+                } else {
+                    // Strip stride padding row by row
+                    for (int y = 0; y < h; y++) {
+                        memcpy(pixels.data() + y * expectedStride,
+                               videoFrame.p_data + y * srcStride,
+                               expectedStride);
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(m_frameMutex);
+                    m_currentFrame.setOwnedPixels(std::move(pixels), w, h, 4, fmt);
+                }
+
+                m_ndiLib->recv_free_video_v2(pRecv, &videoFrame);
+            } else if (frameType == NDIlib_frame_type_none) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } else if (frameType == NDIlib_frame_type_error) {
+                std::cerr << "NDI: Connection lost" << std::endl;
+                m_ndiLib->recv_destroy(static_cast<NDIlib_recv_instance_t>(m_ndiRecv));
+                m_ndiRecv = nullptr;
+                m_connected = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_sourceMutex);
+                    m_sourceName.clear();
+                }
+                {
+                    std::lock_guard<std::mutex> lock(m_frameMutex);
+                    m_currentFrame = Texture();
+                }
             }
-            m_connected = true;
-            std::cout << "NDI: Connected to " << target->p_ndi_name << std::endl;
-        }
-
-        // Capture frames
-        auto* pRecv = static_cast<NDIlib_recv_instance_t>(m_ndiRecv);
-        NDIlib_video_frame_v2_t videoFrame;
-
-        auto frameType = m_ndiLib->recv_capture_v3(pRecv, &videoFrame, nullptr, nullptr, 16);
-
-        if (frameType == NDIlib_frame_type_video) {
-            int w = videoFrame.xres;
-            int h = videoFrame.yres;
-            ColorFormat fmt = (videoFrame.FourCC == NDIlib_FourCC_type_UYVY)
-                ? ColorFormat::UYVY : ColorFormat::RGBA;
-
-            size_t dataSize = static_cast<size_t>(videoFrame.line_stride_in_bytes) * h;
-            std::vector<unsigned char> pixels(videoFrame.p_data, videoFrame.p_data + dataSize);
-
-            {
-                std::lock_guard<std::mutex> lock(m_frameMutex);
-                m_currentFrame.setOwnedPixels(std::move(pixels), w, h, 4, fmt);
-            }
-
-            m_ndiLib->recv_free_video_v2(pRecv, &videoFrame);
-        } else if (frameType == NDIlib_frame_type_none) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        } else if (frameType == NDIlib_frame_type_error) {
-            std::cerr << "NDI: Connection lost" << std::endl;
-            m_ndiLib->recv_destroy(static_cast<NDIlib_recv_instance_t>(m_ndiRecv));
-            m_ndiRecv = nullptr;
-            m_connected = false;
+        } catch (const std::exception& e) {
+            std::cerr << "NDI: Error in receiver loop: " << e.what() << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 }

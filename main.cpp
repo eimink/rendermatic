@@ -162,13 +162,6 @@ int main(int argc, char* argv[]) {
             textureName = currentName;
         }
 
-        if (config.ndiMode) {
-            Texture currentFrame;
-            if (ndiReceiver.getLatestFrame(currentFrame)) {
-                displayTexture = currentFrame;
-            }
-        }
-
         bool rendered = false;
 
 #ifdef HAVE_FFMPEG
@@ -180,6 +173,14 @@ int main(int argc, char* argv[]) {
             }
         }
 #endif
+
+        if (!rendered && config.ndiMode && ndiReceiver.isConnected()) {
+            Texture currentFrame;
+            if (ndiReceiver.getLatestFrame(currentFrame)) {
+                renderer->render(currentFrame);
+                rendered = true;
+            }
+        }
 
         if (!rendered && displayTexture.isValid()) {
             renderer->render(displayTexture);

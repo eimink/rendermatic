@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Creates a partitioned disk image from a rootfs tarball.
-# Runs inside an Alpine container — no loop devices or mounting needed.
+# Runs inside a Debian container — no loop devices or mounting needed.
 #
 # Uses mke2fs -d (populate ext4 from directory) and mcopy (write FAT32 files).
 #
@@ -14,7 +14,7 @@ set -e
 
 ROOTFS_TAR="$1"
 OUTPUT="$2"
-SIZE_MB="${3:-512}"
+SIZE_MB="${3:-2048}"
 TARGET="${4:-rpi}"
 
 BOOT_MB=128
@@ -46,71 +46,38 @@ mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" \
 # Set hostname
 echo "rendermatic" > "$ROOTFS/etc/hostname"
 
-# resolv.conf → tmpfs so DHCP can update DNS on read-only root
+# resolv.conf → systemd-resolved
 rm -f "$ROOTFS/etc/resolv.conf"
-ln -s /run/resolv.conf "$ROOTFS/etc/resolv.conf"
+ln -s /run/systemd/resolve/resolv.conf "$ROOTFS/etc/resolv.conf"
 printf "127.0.0.1\trendermatic localhost\n" > "$ROOTFS/etc/hosts"
 
 # Write fstab
 cat > "$ROOTFS/etc/fstab" << 'FSTAB'
 LABEL=root      /               ext4    ro,noatime              0 0
 LABEL=BOOT      /boot           vfat    ro,noatime              0 0
-LABEL=data      /data           ext4    rw,noatime              0 0
+LABEL=data      /data           ext4    rw,noatime,nofail        0 0
 tmpfs           /tmp            tmpfs   nosuid,nodev            0 0
 tmpfs           /run            tmpfs   nosuid,nodev,mode=0755  0 0
-tmpfs           /var/lib/dhcpcd tmpfs   nosuid,nodev,mode=0755  0 0
+tmpfs           /var/lib/systemd tmpfs  nosuid,nodev,mode=0755  0 0
 tmpfs           /var/log        tmpfs   nosuid,nodev,mode=0755  0 0
 FSTAB
 
-# Ensure init scripts are executable
-chmod +x "$ROOTFS/etc/init.d/rendermatic" 2>/dev/null || true
-chmod +x "$ROOTFS/etc/init.d/data-mount" 2>/dev/null || true
-
-# Install kernel packages into rootfs
-APK_REPOS="--repository https://dl-cdn.alpinelinux.org/alpine/v3.21/main --repository https://dl-cdn.alpinelinux.org/alpine/v3.21/community"
-APK_BASE="apk --root $ROOTFS --initdb --no-cache --allow-untrusted $APK_REPOS --keys-dir /etc/apk/keys"
-
-# Configure mkinitfs features — write to BOTH container and rootfs
-# (apk triggers run in the container context, not inside rootfs)
-mkdir -p /etc/mkinitfs "$ROOTFS/etc/mkinitfs"
-case "$TARGET" in
-    rpi)
-        echo 'features="ata base ext4 mmc scsi usb"' | tee /etc/mkinitfs/mkinitfs.conf > "$ROOTFS/etc/mkinitfs/mkinitfs.conf"
-        ;;
-    *)
-        echo 'features="ata base ext4 nvme scsi usb virtio"' | tee /etc/mkinitfs/mkinitfs.conf > "$ROOTFS/etc/mkinitfs/mkinitfs.conf"
-        ;;
-esac
-
-case "$TARGET" in
-    rpi)
-        echo "Installing RPi kernel and firmware..."
-        $APK_BASE add alpine-base linux-rpi linux-firmware-none raspberrypi-bootloader mkinitfs 2>&1 | tail -5
-        ;;
-    *)
-        echo "Installing generic kernel..."
-        $APK_BASE add alpine-base linux-lts linux-firmware-none mkinitfs 2>&1 | tail -5
-        ;;
-esac
-
-# Regenerate initramfs with correct features (in case trigger used wrong config)
-KVER=$(ls "$ROOTFS/lib/modules/" | head -1)
+# Kernel is already installed in rootfs from Dockerfile.
+# Just regenerate modules.dep for read-only root.
+KVER=$(ls "$ROOTFS/lib/modules/" 2>/dev/null | head -1)
 if [ -n "$KVER" ]; then
-    echo "Regenerating initramfs for $KVER..."
-    mkinitfs -b "$ROOTFS" -o "$ROOTFS/boot/initramfs-lts" "$KVER"
+    echo "Generating module dependencies for $KVER..."
+    depmod -b "$ROOTFS" "$KVER"
 fi
-
-# Generate modules.dep (root is read-only at runtime)
-echo "Generating module dependencies..."
-depmod -b "$ROOTFS" "$KVER"
 
 # --- Prepare boot directory ---
 echo "Preparing boot files..."
 BOOTDIR="$WORK/boot"
 mkdir -p "$BOOTDIR"
 
-# Copy kernel and initramfs
-cp "$ROOTFS/boot/"* "$BOOTDIR/" 2>/dev/null || true
+# Copy kernel and initramfs with short names (FAT32 has no symlinks)
+cp "$ROOTFS/boot/vmlinuz-"* "$BOOTDIR/vmlinuz"
+cp "$ROOTFS/boot/initrd.img-"* "$BOOTDIR/initrd.img"
 
 case "$TARGET" in
     rpi)
@@ -120,18 +87,18 @@ dtparam=audio=off
 gpu_mem=64
 
 [pi3]
-kernel=vmlinuz-rpi
-initramfs initramfs-rpi
+kernel=vmlinuz
+initramfs initrd.img
 
 [pi4]
-kernel=vmlinuz-rpi
-initramfs initramfs-rpi
+kernel=vmlinuz
+initramfs initrd.img
 arm_64bit=1
 enable_gic=1
 
 [pi5]
-kernel=vmlinuz-rpi
-initramfs initramfs-rpi
+kernel=vmlinuz
+initramfs initrd.img
 arm_64bit=1
 
 [all]
@@ -144,12 +111,12 @@ CMDLINE
 
     generic-arm64|vm-arm64)
         echo "Installing GRUB EFI bootloader..."
-        apk add --no-cache grub-efi >/dev/null 2>&1
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends grub-efi-arm64 >/dev/null 2>&1
         cat > /tmp/grub-early.cfg << 'GRUBCFG'
 search --label --set=root BOOT
 set timeout=0
-linux /vmlinuz-lts root=LABEL=root ro quiet console=tty0 modules=ext4
-initrd /initramfs-lts
+linux /vmlinuz root=LABEL=root ro quiet console=tty0 modules=ext4
+initrd /initrd.img
 boot
 GRUBCFG
         mkdir -p "$BOOTDIR/EFI/BOOT"
@@ -162,12 +129,12 @@ GRUBCFG
 
     x86_64)
         echo "Installing GRUB EFI bootloader..."
-        apk add --no-cache grub-efi >/dev/null 2>&1
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends grub-efi-amd64-bin >/dev/null 2>&1
         cat > /tmp/grub-early.cfg << 'GRUBCFG'
 search --label --set=root BOOT
 set timeout=0
-linux /vmlinuz-lts root=LABEL=root ro quiet modules=ext4
-initrd /initramfs-lts
+linux /vmlinuz root=LABEL=root ro quiet modules=ext4
+initrd /initrd.img
 boot
 GRUBCFG
         mkdir -p "$BOOTDIR/EFI/BOOT"
@@ -181,7 +148,7 @@ esac
 
 # --- Prepare data directory ---
 DATADIR="$WORK/data"
-mkdir -p "$DATADIR/media" "$DATADIR/logs" "$DATADIR/ssh"
+mkdir -p "$DATADIR/media" "$DATADIR/logs" "$DATADIR/ssh" "$DATADIR/lib"
 cp "$ROOTFS/rendermatic/config.json.default" "$DATADIR/config.json" 2>/dev/null || true
 cp "$ROOTFS/rendermatic/media/"* "$DATADIR/media/" 2>/dev/null || true
 touch "$DATADIR/.initialized"

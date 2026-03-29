@@ -60,7 +60,7 @@ Rendermatic searches for the library in these locations (in order):
 After placing the library, restart the service:
 
 ```bash
-ssh render@rendermatic-ca6bf5.local "sudo rc-service rendermatic restart"
+ssh render@rendermatic-ca6bf5.local "sudo systemctl restart rendermatic"
 ```
 
 The startup log will show:
@@ -91,7 +91,7 @@ Response:
 
 ### `set_ndi_source`
 
-Connect to a specific NDI source by name. Starts the receiver if not already running.
+Connect to a specific NDI source by name. Starts the receiver if not already running. A specific source name is required — the receiver will not auto-connect to arbitrary sources. Connection happens asynchronously — the response includes the current `connected` state, which will be `false` until the receiver thread establishes the connection. Poll `get_ndi_status` to track when the connection is established.
 
 ```json
 {"command": "set_ndi_source", "source": "LAPTOP (OBS)"}
@@ -102,7 +102,8 @@ Response:
 {
     "command": "set_ndi_source_response",
     "success": true,
-    "source": "LAPTOP (OBS)"
+    "source": "LAPTOP (OBS)",
+    "connected": false
 }
 ```
 
@@ -126,7 +127,7 @@ Response:
 
 ### `stop_ndi`
 
-Disconnect from the current NDI source.
+Disconnect from the current NDI source. Clears the configured source name and disables NDI mode.
 
 ```json
 {"command": "stop_ndi"}
@@ -156,7 +157,7 @@ NDI mode can be enabled via `config.json`:
 
 Or via command-line flag: `./rendermatic -n`
 
-If `ndiSourceName` is empty, Rendermatic connects to the first NDI source it discovers.
+A specific `ndiSourceName` is required for the receiver to connect. If empty, the receiver will idle until a source is set via the `set_ndi_source` WebSocket command.
 
 ## Platform Support
 
@@ -167,13 +168,9 @@ If `ndiSourceName` is empty, Rendermatic connects to the first NDI source it dis
 | Linux armhf | `lib/arm-rpi4-linux-gnueabihf/libndi.so.6.3.1` | Raspberry Pi (32-bit) |
 | macOS | Via NDI SDK for macOS | Both Intel and Apple Silicon |
 
-### Alpine Linux / musl libc
+### musl libc systems (Alpine Linux)
 
-The NDI runtime libraries are built against glibc. On Alpine Linux (which uses musl), you may need the glibc compatibility layer:
-
-```
-apk add gcompat
-```
+The NDI runtime libraries are built against glibc. On systems using musl libc (e.g. Alpine Linux), NDI is not supported. Use a glibc-based distribution such as Debian.
 
 ## Licensing
 

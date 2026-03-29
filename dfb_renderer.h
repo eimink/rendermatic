@@ -13,6 +13,7 @@ public:
     bool init(int width, int height, const char* title, bool fullscreen, int monitorIndex) override;
     void processInput() override;
     void render(const Texture& texture) override;
+    void renderOverlay(const Texture& overlay) override;
     void present() override;
     bool shouldClose() const override;
     int getWidth() const override { return m_width; }
