@@ -311,6 +311,7 @@ Returns information about the device.
     "wsPort": 9002,
     "currentTexture": "logo.png",
     "authEnabled": true,
+    "ndiAvailable": false,
     "success": true
 }
 ```
@@ -322,6 +323,7 @@ Returns information about the device.
 | `wsPort`         | int    | WebSocket server port                   |
 | `currentTexture` | string | Filename of the currently active texture |
 | `authEnabled`    | bool   | Whether auth key is configured          |
+| `ndiAvailable`   | bool   | Whether NDI runtime is installed on device (hide NDI UI if `false`) |
 
 **Response (unauthenticated, reduced):**
 ```json
