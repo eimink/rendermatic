@@ -8,9 +8,11 @@
 #include <json/json.h>
 #include "texture_manager.h"
 #include "auth_manager.h"
+#include "irenderer.h"
 
 class MDNSAdvertiser;
 class SplashController;
+class NDIReceiver;
 struct Configuration;
 #ifdef HAVE_FFMPEG
 class VideoDecoder;
@@ -30,6 +32,8 @@ public:
     // Set mDNS advertiser for dynamic name updates
     void setMDNSAdvertiser(MDNSAdvertiser* advertiser) { m_advertiser = advertiser; }
     void setSplashController(SplashController* controller) { m_splashController = controller; }
+    void setRenderer(IRenderer* renderer) { m_renderer = renderer; }
+    void setNDIReceiver(NDIReceiver* ndi) { m_ndiReceiver = ndi; }
     
     // Set configuration for device info, name persistence, and auth key loading
     void setConfiguration(Configuration* config);
@@ -62,6 +66,8 @@ private:
     uint16_t port;
     MDNSAdvertiser* m_advertiser = nullptr;
     SplashController* m_splashController = nullptr;
+    IRenderer* m_renderer = nullptr;
+    NDIReceiver* m_ndiReceiver = nullptr;
     Configuration* m_config = nullptr;
     AuthManager m_auth;
 #ifdef HAVE_FFMPEG

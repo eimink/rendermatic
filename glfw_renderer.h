@@ -18,6 +18,7 @@ public:
     bool shouldClose() const override;
     int getWidth() const override { return m_width; }
     int getHeight() const override { return m_height; }
+    void setRotation(int degrees) override { m_displayRotation = degrees / 90; }
     void processInput() override;
     GLFWwindow* getWindow() { return window; }
 
@@ -34,6 +35,8 @@ private:
     unsigned int VBO, VAO, EBO;
     unsigned int texture;
     int colorFormatLocation;
+    int rotationLocation = -1;
+    int m_displayRotation = 0;
     Loader loader;
     int m_width = 0;
     int m_height = 0;

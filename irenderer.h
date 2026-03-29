@@ -11,6 +11,7 @@ public:
     virtual void present() {}
     virtual bool shouldClose() const = 0;
     virtual void setFullscreenScaling(bool enabled) { m_fullscreenScaling = enabled; }
+    virtual void setRotation(int degrees) { (void)degrees; }
     virtual int getWidth() const { return 0; }
     virtual int getHeight() const { return 0; }
 

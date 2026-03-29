@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
 #endif
 #endif
 
-    std::unique_ptr<NDIReceiver> ndiReceiver;
+    NDIReceiver ndiReceiver;
 
     TextureManager textureManager;
     std::string textureName;
@@ -98,6 +98,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     renderer->setFullscreenScaling(config.fullscreenScaling);
+    renderer->setRotation(config.displayRotation);
+    wsServer.setRenderer(renderer.get());
 
     // Load default texture for image mode
     if (!textureManager.loadTexture("default.jpg")) {
@@ -107,9 +109,13 @@ int main(int argc, char* argv[]) {
     textureManager.setCurrentTexture("default.jpg");
     Texture displayTexture = textureManager.getCurrentTextureCopy();
 
-    if (config.ndiMode) {
-        ndiReceiver = std::make_unique<NDIReceiver>();
-        ndiReceiver->start();
+    ndiReceiver.loadRuntime();  // Loads libndi.so if present, no-op if not
+    wsServer.setNDIReceiver(&ndiReceiver);
+    if (config.ndiMode && ndiReceiver.isRuntimeLoaded()) {
+        if (!config.ndiSourceName.empty()) {
+            ndiReceiver.setSource(config.ndiSourceName);
+        }
+        ndiReceiver.start();
     }
 
 #ifdef HAVE_FFMPEG
@@ -156,9 +162,9 @@ int main(int argc, char* argv[]) {
             textureName = currentName;
         }
 
-        if (config.ndiMode && ndiReceiver) {
+        if (config.ndiMode) {
             Texture currentFrame;
-            if (ndiReceiver->getLatestFrame(currentFrame)) {
+            if (ndiReceiver.getLatestFrame(currentFrame)) {
                 displayTexture = currentFrame;
             }
         }
@@ -190,9 +196,7 @@ int main(int argc, char* argv[]) {
         renderer->present();
     }
 
-    if (ndiReceiver) {
-        ndiReceiver->stop();
-    }
+    ndiReceiver.stop();
 
 #ifdef HAVE_FFMPEG
     if (videoDecoder) {

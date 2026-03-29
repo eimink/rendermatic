@@ -851,6 +851,11 @@ The `#RENDERMATIC:LOOP=false` directive disables playlist looping (default is `t
 | `next_video`       | `next_video_response`     | Yes           | Skip to next video in playlist       |
 | `prev_video`       | `prev_video_response`     | Yes           | Go back to previous video            |
 | `get_playlist_status` | `playlist_status`      | Yes           | Query playlist state                 |
+| `scan_ndi_sources` | `ndi_sources`            | Yes           | Discover NDI sources on network      |
+| `set_ndi_source`   | `set_ndi_source_response` | Yes          | Connect to an NDI source             |
+| `get_ndi_status`   | `ndi_status`              | Yes          | Query NDI connection state           |
+| `stop_ndi`         | `stop_ndi_response`       | Yes          | Disconnect from NDI source           |
+| `set_rotation`     | `set_rotation_response`   | Yes          | Set display rotation (0/90/180/270)  |
 
 *`get_device_info` returns a reduced response (instance name only) when unauthenticated. `identify` is always allowed regardless of auth state.
 

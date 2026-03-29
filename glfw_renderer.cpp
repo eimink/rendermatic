@@ -74,6 +74,7 @@ void GLFWRenderer::render(const Texture& texture) {
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(shaderProgram);
     glUniform1i(colorFormatLocation, static_cast<int>(texture.format));
+    glUniform1i(rotationLocation, m_displayRotation);
     
     glBindTexture(GL_TEXTURE_2D, this->texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width, texture.height, 
@@ -196,6 +197,7 @@ bool GLFWRenderer::createShaders() {
 
     // Get uniform location
     colorFormatLocation = glGetUniformLocation(shaderProgram, "colorFormat");
+    rotationLocation = glGetUniformLocation(shaderProgram, "displayRotation");
 
     return true;
 }

@@ -180,6 +180,9 @@ if(ENABLE_FFMPEG)
     endif()
 endif()
 
+# NDI: headers vendored in ndi/ (MIT licensed), runtime loaded via dlopen()
+# No compile-time dependency on libndi — it's loaded at runtime if present
+
 # Add executable with conditional sources
 set(SOURCES
     main.cpp
@@ -276,6 +279,8 @@ if(FFMPEG_FOUND)
     target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
     target_link_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_LIBRARY_DIRS})
 endif()
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS})  # For dlopen/dlsym (NDI dynamic loading)
 
 # Include directories
 target_include_directories(${PROJECT_NAME} 

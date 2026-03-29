@@ -115,6 +115,7 @@ void DirectFBRenderer::render(const Texture& texture) {
     glUseProgram(m_shader);
     glUniform1i(m_colorFormatLocation, static_cast<int>(texture.format));
     glUniform1i(m_scalingLocation, m_fullscreenScaling ? 1 : 0);
+    glUniform1i(m_rotationLocation, m_displayRotation);
     
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width, texture.height, 
@@ -210,6 +211,7 @@ bool DirectFBRenderer::initGL() {
     // Get uniform locations
     m_colorFormatLocation = glGetUniformLocation(m_shader, "colorFormat");
     m_scalingLocation = glGetUniformLocation(m_shader, "fullscreenScaling");
+    m_rotationLocation = glGetUniformLocation(m_shader, "displayRotation");
 
     // Setup buffers
     glGenVertexArrays(1, &m_vao);

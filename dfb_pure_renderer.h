@@ -16,6 +16,7 @@ public:
     bool shouldClose() const override;
     int getWidth() const override { return m_width; }
     int getHeight() const override { return m_height; }
+    void setRotation(int degrees) override { m_displayRotation = degrees / 90; }
 
 private:
     IDirectFB* m_dfb = nullptr;
@@ -25,6 +26,9 @@ private:
     bool m_shouldClose = false;
     int m_width = 0;
     int m_height = 0;
+    int m_texW = 0;
+    int m_texH = 0;
+    int m_displayRotation = 0;
 };
 
 #endif // HAVE_DIRECTFB

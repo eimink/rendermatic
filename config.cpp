@@ -88,6 +88,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.fullscreenScaling = root.get("fullscreenScaling", false).asBool();
                 config.monitorIndex = root.get("monitorIndex", 0).asInt();
                 config.ndiMode = root.get("ndiMode", false).asBool();
+                config.ndiSourceName = root.get("ndiSourceName", "").asString();
                 config.backend = root.get("backend", "glfw").asString();
                 config.width = root.get("width", 1920).asInt();
                 config.height = root.get("height", 1080).asInt();
@@ -98,6 +99,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.videoLoop = root.get("videoLoop", true).asBool();
                 config.authKeyHash = root.get("authKeyHash", "").asString();
                 config.splashDurationSeconds = root.get("splashDurationSeconds", 5).asInt();
+                config.displayRotation = root.get("displayRotation", 0).asInt();
             }
         }
     } catch (const std::exception& e) {
@@ -129,6 +131,7 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["fullscreenScaling"] = fullscreenScaling;
         root["monitorIndex"] = monitorIndex;
         root["ndiMode"] = ndiMode;
+        root["ndiSourceName"] = ndiSourceName;
         root["backend"] = backend;
         root["width"] = width;
         root["height"] = height;
@@ -139,6 +142,7 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["videoLoop"] = videoLoop;
         root["authKeyHash"] = authKeyHash;
         root["splashDurationSeconds"] = splashDurationSeconds;
+        root["displayRotation"] = displayRotation;
         
         std::ofstream file(path);
         if (!file.is_open()) {

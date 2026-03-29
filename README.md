@@ -227,6 +227,18 @@ To run manually with root privileges:
 sudo /rendermatic/rendermatic
 ```
 
+## NDI Support
+
+Rendermatic can receive real-time video via [NDI](https://ndi.video/) for live production use cases. The NDI runtime (`libndi.so`) is loaded dynamically at startup — if present, NDI works; if absent, everything else works normally.
+
+The NDI runtime is **not included** in the pre-built images. See [NDI.md](NDI.md) for setup instructions, licensing details, and platform support.
+
+Quick setup:
+```bash
+# Copy the NDI runtime to your device
+scp libndi.so.6 render@rendermatic-ca6bf5.local:/data/lib/
+```
+
 ## WebSocket Interface
 
 The application provides a WebSocket control API on port 9002 (configurable). See [WEBSOCKET-API.md](WEBSOCKET-API.md) for the full protocol reference.

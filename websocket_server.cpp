@@ -1,5 +1,6 @@
 #include "websocket_server.h"
 #include "splash_controller.h"
+#include "ndireceiver.h"
 #include "mdns_advertiser.h"
 #include "config.h"
 #ifdef HAVE_FFMPEG
@@ -314,6 +315,24 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             }
         }
     }
+    else if (command == "set_rotation") {
+        response["command"] = "set_rotation_response";
+        int angle = root.get("angle", 0).asInt();
+        if (angle != 0 && angle != 90 && angle != 180 && angle != 270) {
+            response["success"] = false;
+            response["message"] = "Invalid angle. Must be 0, 90, 180, or 270.";
+        } else {
+            if (m_renderer) {
+                m_renderer->setRotation(angle);
+            }
+            if (m_config) {
+                m_config->displayRotation = angle;
+                m_config->saveToFile();
+            }
+            response["success"] = true;
+            response["angle"] = angle;
+        }
+    }
     // --- Auth management commands ---
     else if (command == "set_auth_key") {
         response["command"] = "set_auth_key_response";
@@ -529,6 +548,68 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         }
     }
 #endif
+    // --- NDI commands ---
+    else if (command == "scan_ndi_sources") {
+        response["command"] = "ndi_sources";
+        response["sources"] = Json::arrayValue;
+        if (m_ndiReceiver && m_ndiReceiver->isRuntimeLoaded()) {
+            for (const auto& src : m_ndiReceiver->getAvailableSources()) {
+                response["sources"].append(src);
+            }
+            response["success"] = true;
+        } else {
+            response["success"] = false;
+            response["message"] = "NDI runtime not installed. Place libndi.so in /data/lib/";
+        }
+    }
+    else if (command == "set_ndi_source") {
+        response["command"] = "set_ndi_source_response";
+        if (!m_ndiReceiver || !m_ndiReceiver->isRuntimeLoaded()) {
+            response["success"] = false;
+            response["message"] = "NDI runtime not installed. Place libndi.so in /data/lib/";
+        } else if (!root.isMember("source")) {
+            response["success"] = false;
+            response["message"] = "Missing 'source' field";
+        } else {
+            std::string source = root["source"].asString();
+            m_ndiReceiver->setSource(source);
+            if (!m_ndiReceiver->isConnected()) {
+                m_ndiReceiver->start();
+            }
+            if (m_config) {
+                m_config->ndiSourceName = source;
+                m_config->ndiMode = true;
+                m_config->saveToFile();
+            }
+            response["success"] = true;
+            response["source"] = source;
+        }
+    }
+    else if (command == "get_ndi_status") {
+        response["command"] = "ndi_status";
+        if (m_ndiReceiver) {
+            response["connected"] = m_ndiReceiver->isConnected();
+            response["source"] = m_ndiReceiver->getCurrentSourceName();
+        } else {
+            response["connected"] = false;
+            response["source"] = "";
+        }
+        response["success"] = true;
+    }
+    else if (command == "stop_ndi") {
+        response["command"] = "stop_ndi_response";
+        if (m_ndiReceiver) {
+            m_ndiReceiver->stop();
+            if (m_config) {
+                m_config->ndiMode = false;
+                m_config->saveToFile();
+            }
+            response["success"] = true;
+        } else {
+            response["success"] = false;
+            response["message"] = "NDI receiver not available";
+        }
+    }
     else {
         response["command"] = "error";
         response["message"] = "Unknown command";

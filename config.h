@@ -7,6 +7,7 @@ struct Configuration {
     bool fullscreenScaling = false;
     int monitorIndex = 0;
     bool ndiMode = false;
+    std::string ndiSourceName = "";  // Preferred NDI source (empty = first found)
     std::string backend = "glfw";
     int width = 1920;
     int height = 1080;
@@ -17,6 +18,7 @@ struct Configuration {
     bool videoLoop = true;          // Loop video files (ignored for streams)
     std::string authKeyHash = "";   // SHA-256 hex of auth key; empty = no auth (open mode)
     int splashDurationSeconds = 5;  // Boot overlay duration; 0 = disabled
+    int displayRotation = 0;        // Display rotation in degrees (0, 90, 180, 270)
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);

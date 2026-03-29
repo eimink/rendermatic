@@ -17,6 +17,7 @@ public:
     bool shouldClose() const override;
     int getWidth() const override { return m_width; }
     int getHeight() const override { return m_height; }
+    void setRotation(int degrees) override { m_displayRotation = degrees / 90; }
 
 private:
     bool initGL();
@@ -39,6 +40,8 @@ private:
     int m_height = 0;
     int m_colorFormatLocation = -1;
     int m_scalingLocation = -1;
+    int m_rotationLocation = -1;
+    int m_displayRotation = 0;
 
     // Vertex data
     float m_vertices[20] = {
