@@ -296,6 +296,7 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["wsPort"] = port;
         response["currentTexture"] = textureManager.getCurrentTextureName();
         response["authEnabled"] = m_auth.isAuthEnabled();
+        response["ndiAvailable"] = m_ndiReceiver && m_ndiReceiver->isRuntimeLoaded();
         response["success"] = true;
     }
     else if (command == "set_device_name") {
