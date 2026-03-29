@@ -237,6 +237,9 @@ void VideoDecoder::decoderLoop() {
                 }
                 // End of stream or file (no loop)
                 m_active = false;
+                if (m_onEndCallback) {
+                    m_onEndCallback();
+                }
                 break;
             }
             // Transient error, retry

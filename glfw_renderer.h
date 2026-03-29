@@ -14,7 +14,10 @@ public:
     bool init(int width, int height, const char* title, 
              bool fullscreen = false, int monitorIndex = 0) override;
     void render(const Texture& texture) override;
-    bool shouldClose() const override; // Changed to match pure virtual signature
+    void present() override;
+    bool shouldClose() const override;
+    int getWidth() const override { return m_width; }
+    int getHeight() const override { return m_height; }
     void processInput() override;
     GLFWwindow* getWindow() { return window; }
 
@@ -32,6 +35,8 @@ private:
     unsigned int texture;
     int colorFormatLocation;
     Loader loader;
+    int m_width = 0;
+    int m_height = 0;
 
     // Vertex data
     float vertices[20] = {

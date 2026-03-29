@@ -5,6 +5,7 @@
 #include "ndireceiver.h"
 #include "texture_manager.h"
 #include "websocket_server.h"
+#include "splash_controller.h"
 #include "mdns_advertiser.h"
 #include <iostream>
 #include <filesystem>
@@ -20,6 +21,7 @@
 
 #ifdef HAVE_FFMPEG
     #include "video_decoder.h"
+    #include "playlist_controller.h"
 #endif
 
 int main(int argc, char* argv[]) {
@@ -111,19 +113,37 @@ int main(int argc, char* argv[]) {
     }
 
 #ifdef HAVE_FFMPEG
-    std::unique_ptr<VideoDecoder> videoDecoder;
+    auto videoDecoder = std::make_unique<VideoDecoder>();
+    wsServer.setVideoDecoder(videoDecoder.get());
+
+    // Start single video if configured
     if (config.videoMode && !config.videoSource.empty()) {
-        videoDecoder = std::make_unique<VideoDecoder>();
         videoDecoder->setLoop(config.videoLoop);
         if (videoDecoder->open(config.videoSource)) {
             videoDecoder->start();
         } else {
             std::cerr << "Failed to open video source: " << config.videoSource << std::endl;
-            videoDecoder.reset();
         }
     }
-    wsServer.setVideoDecoder(videoDecoder.get());
+
+    // Playlist controller
+    PlaylistController playlistController(videoDecoder.get());
+    wsServer.setPlaylistController(&playlistController);
+
+    // Load playlist from file if present
+    playlistController.loadFromFile("playlist.m3u");
 #endif
+
+    // Splash/identify overlay controller — use actual display resolution
+    int displayWidth = renderer->getWidth() > 0 ? renderer->getWidth() : config.width;
+    int displayHeight = renderer->getHeight() > 0 ? renderer->getHeight() : config.height;
+    SplashController splashController(displayWidth, displayHeight, config.wsPort);
+    wsServer.setSplashController(&splashController);
+
+    // Show boot overlay
+    if (config.splashDurationSeconds > 0 && !config.videoMode) {
+        splashController.trigger(config.splashDurationSeconds);
+    }
 
     // Main loop
     Texture videoFrame;
@@ -143,19 +163,31 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        bool rendered = false;
+
 #ifdef HAVE_FFMPEG
         if (videoDecoder && videoDecoder->isActive()) {
             videoDecoder->getLatestFrame(videoFrame);
             if (videoFrame.isValid()) {
                 renderer->render(videoFrame);
-                continue;
+                rendered = true;
             }
         }
 #endif
 
-        if (displayTexture.isValid()) {
+        if (!rendered && displayTexture.isValid()) {
             renderer->render(displayTexture);
         }
+
+        // Overlay on top of whatever was rendered
+        if (splashController.isActive()) {
+            Texture overlay = splashController.getOverlayTexture();
+            if (overlay.isValid()) {
+                renderer->renderOverlay(overlay);
+            }
+        }
+
+        renderer->present();
     }
 
     if (ndiReceiver) {

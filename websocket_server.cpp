@@ -1,10 +1,14 @@
 #include "websocket_server.h"
+#include "splash_controller.h"
 #include "mdns_advertiser.h"
 #include "config.h"
 #ifdef HAVE_FFMPEG
 #include "video_decoder.h"
+#include "playlist_controller.h"
 #endif
 #include <unistd.h>
+#include <algorithm>
+#include <filesystem>
 
 namespace {
     // Reject path traversal attempts in filenames
@@ -122,6 +126,23 @@ void WebSocketServer::onClose(websocketpp::connection_hdl hdl) {
     m_auth.onConnectionClosed(hdl);
 }
 
+std::vector<std::string> WebSocketServer::scanVideos() {
+    m_availableVideos.clear();
+    if (!std::filesystem::exists(MEDIA_PATH)) return m_availableVideos;
+
+    for (const auto& entry : std::filesystem::directory_iterator(MEDIA_PATH)) {
+        if (entry.is_regular_file()) {
+            std::string ext = entry.path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            if (ext == ".mp4" || ext == ".mkv" || ext == ".mov" ||
+                ext == ".avi" || ext == ".webm" || ext == ".flv") {
+                m_availableVideos.push_back(entry.path().filename().string());
+            }
+        }
+    }
+    return m_availableVideos;
+}
+
 void WebSocketServer::sendJson(websocketpp::connection_hdl hdl, const Json::Value& response) {
     Json::FastWriter writer;
     server.send(hdl, writer.write(response), websocketpp::frame::opcode::text);
@@ -176,6 +197,23 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             return;
         }
 
+        // Allow identify without auth (physical operation for device location)
+        if (command == "identify" && !m_auth.isAuthenticated(hdl)) {
+            response["command"] = "identify_response";
+            if (m_splashController) {
+                int duration = root.get("duration", 10).asInt();
+                duration = std::clamp(duration, 1, 60);
+                m_splashController->trigger(duration);
+                response["success"] = true;
+                response["duration"] = duration;
+            } else {
+                response["success"] = false;
+                response["message"] = "Splash controller not available";
+            }
+            sendJson(hdl, response);
+            return;
+        }
+
         // Block all other commands for unauthenticated connections
         if (!m_auth.isAuthenticated(hdl)) {
             response["command"] = "auth_required";
@@ -202,6 +240,23 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["textures"] = Json::arrayValue;
         for (const auto& texture : textureManager.getAvailableTextures()) {
             response["textures"].append(texture);
+        }
+        response["success"] = true;
+    }
+    else if (command == "scan_videos") {
+        auto videos = scanVideos();
+        response["command"] = "scan_videos_response";
+        response["videos"] = Json::arrayValue;
+        for (const auto& video : videos) {
+            response["videos"].append(video);
+        }
+        response["success"] = true;
+    }
+    else if (command == "list_videos") {
+        response["command"] = "video_list";
+        response["videos"] = Json::arrayValue;
+        for (const auto& video : m_availableVideos) {
+            response["videos"].append(video);
         }
         response["success"] = true;
     }
@@ -294,6 +349,19 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
         response["success"] = true;
         response["message"] = "Authentication disabled. All connections are now open.";
     }
+    else if (command == "identify") {
+        response["command"] = "identify_response";
+        if (m_splashController) {
+            int duration = root.get("duration", 10).asInt();
+            duration = std::clamp(duration, 1, 60);
+            m_splashController->trigger(duration);
+            response["success"] = true;
+            response["duration"] = duration;
+        } else {
+            response["success"] = false;
+            response["message"] = "Splash controller not available";
+        }
+    }
     else if (command == "get_auth_status") {
         response["command"] = "auth_status";
         response["authEnabled"] = m_auth.isAuthEnabled();
@@ -317,10 +385,15 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
                 sendJson(hdl, response);
                 return;
             }
+            // Prefix local filenames with media path
+            std::string fullSource = source;
+            if (source.find("://") == std::string::npos) {
+                fullSource = MEDIA_PATH + source;
+            }
             bool loop = root.get("loop", true).asBool();
             m_videoDecoder->stop();
             m_videoDecoder->setLoop(loop);
-            if (m_videoDecoder->open(source)) {
+            if (m_videoDecoder->open(fullSource)) {
                 m_videoDecoder->start();
                 if (m_config) {
                     m_config->videoSource = source;
@@ -359,6 +432,96 @@ void WebSocketServer::onMessage(websocketpp::connection_hdl hdl, wsserver::messa
             response["fps"] = info.fps;
             response["duration"] = info.duration;
             response["codec"] = info.codec;
+            response["success"] = true;
+        } else {
+            response["active"] = false;
+            response["success"] = true;
+        }
+    }
+    else if (command == "set_playlist") {
+        response["command"] = "set_playlist_response";
+        if (!m_playlistController) {
+            response["success"] = false;
+            response["message"] = "Playlist controller not available";
+        } else if (!root.isMember("videos") || !root["videos"].isArray()) {
+            response["success"] = false;
+            response["message"] = "Missing 'videos' array";
+        } else {
+            std::vector<std::string> videos;
+            for (const auto& v : root["videos"]) {
+                std::string name = v.asString();
+                if (!name.empty()) videos.push_back(name);
+            }
+            bool loop = root.get("loop", true).asBool();
+            m_playlistController->setPlaylist(videos, loop);
+            m_playlistController->saveToFile("playlist.m3u");
+            response["success"] = true;
+            response["count"] = static_cast<int>(videos.size());
+        }
+    }
+    else if (command == "start_playlist") {
+        response["command"] = "start_playlist_response";
+        if (!m_playlistController) {
+            response["success"] = false;
+            response["message"] = "Playlist controller not available";
+        } else if (m_playlistController->getPlaylistSize() == 0) {
+            response["success"] = false;
+            response["message"] = "No playlist set";
+        } else {
+            int index = root.get("index", 0).asInt();
+            m_playlistController->start(index);
+            if (m_config) {
+                m_config->videoMode = true;
+            }
+            response["success"] = true;
+        }
+    }
+    else if (command == "stop_playlist") {
+        response["command"] = "stop_playlist_response";
+        if (m_playlistController) {
+            m_playlistController->stop();
+            if (m_config) {
+                m_config->videoMode = false;
+            }
+            response["success"] = true;
+        } else {
+            response["success"] = false;
+            response["message"] = "Playlist controller not available";
+        }
+    }
+    else if (command == "next_video") {
+        response["command"] = "next_video_response";
+        if (m_playlistController && m_playlistController->isActive()) {
+            m_playlistController->next();
+            response["success"] = true;
+            response["currentIndex"] = m_playlistController->getCurrentIndex();
+        } else {
+            response["success"] = false;
+            response["message"] = "No active playlist";
+        }
+    }
+    else if (command == "prev_video") {
+        response["command"] = "prev_video_response";
+        if (m_playlistController && m_playlistController->isActive()) {
+            m_playlistController->prev();
+            response["success"] = true;
+            response["currentIndex"] = m_playlistController->getCurrentIndex();
+        } else {
+            response["success"] = false;
+            response["message"] = "No active playlist";
+        }
+    }
+    else if (command == "get_playlist_status") {
+        response["command"] = "playlist_status";
+        if (m_playlistController) {
+            response["active"] = m_playlistController->isActive();
+            response["currentIndex"] = m_playlistController->getCurrentIndex();
+            response["currentSource"] = m_playlistController->getCurrentSource();
+            response["loop"] = m_playlistController->isLooping();
+            response["videos"] = Json::arrayValue;
+            for (const auto& v : m_playlistController->getPlaylist()) {
+                response["videos"].append(v);
+            }
             response["success"] = true;
         } else {
             response["active"] = false;

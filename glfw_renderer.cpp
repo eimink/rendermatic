@@ -46,6 +46,8 @@ bool GLFWRenderer::init(int width, int height, const char* title, bool fullscree
         height = mode->height;
     }
 
+    m_width = width;
+    m_height = height;
     window = glfwCreateWindow(width, height, title, monitor, NULL);
     if (!window) {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -79,7 +81,9 @@ void GLFWRenderer::render(const Texture& texture) {
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    
+}
+
+void GLFWRenderer::present() {
     glfwSwapBuffers(window);
     glfwPollEvents();
 }

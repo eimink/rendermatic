@@ -52,16 +52,18 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
 
     // Create primary surface with OpenGL capabilities
     DFBSurfaceDescription desc;
-    desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_CAPS | DSDESC_WIDTH | DSDESC_HEIGHT);
+    desc.flags = (DFBSurfaceDescriptionFlags)(DSDESC_CAPS);
     desc.caps = (DFBSurfaceCapabilities)(DSCAPS_PRIMARY | DSCAPS_GL);
-    desc.width = width;
-    desc.height = height;
 
     result = m_dfb->CreateSurface(m_dfb, &desc, &m_primary);
     if (result != DFB_OK) {
         std::cerr << "Failed to create primary surface: " << DirectFBErrorString(result) << std::endl;
         return false;
     }
+
+    // Query actual framebuffer resolution from the display
+    m_primary->GetSize(m_primary, &m_width, &m_height);
+    std::cout << "Display resolution: " << m_width << "x" << m_height << std::endl;
 
     // Get OpenGL interface
     result = m_primary->GetGL(m_primary, &m_gl);
@@ -122,7 +124,12 @@ void DirectFBRenderer::render(const Texture& texture) {
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     
     m_gl->Unlock(m_gl);
-    m_primary->Flip(m_primary, NULL, DSFLIP_WAITFORSYNC);
+}
+
+void DirectFBRenderer::present() {
+    if (m_primary) {
+        m_primary->Flip(m_primary, NULL, DSFLIP_WAITFORSYNC);
+    }
 }
 
 bool DirectFBRenderer::shouldClose() const {

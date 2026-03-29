@@ -97,6 +97,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.videoMode = root.get("videoMode", false).asBool();
                 config.videoLoop = root.get("videoLoop", true).asBool();
                 config.authKeyHash = root.get("authKeyHash", "").asString();
+                config.splashDurationSeconds = root.get("splashDurationSeconds", 5).asInt();
             }
         }
     } catch (const std::exception& e) {
@@ -137,6 +138,7 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["videoMode"] = videoMode;
         root["videoLoop"] = videoLoop;
         root["authKeyHash"] = authKeyHash;
+        root["splashDurationSeconds"] = splashDurationSeconds;
         
         std::ofstream file(path);
         if (!file.is_open()) {

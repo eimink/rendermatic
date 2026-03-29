@@ -190,6 +190,10 @@ set(SOURCES
     websocket_server.cpp
     mdns_advertiser.cpp
     auth_manager.cpp
+    splash_screen.cpp
+    splash_controller.cpp
+    embedded_font.cpp
+    playlist_controller.cpp
 )
 
 if(NOT DFB_ONLY)
@@ -311,9 +315,9 @@ else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -pedantic -std=c++20)
 endif()
 
-# Copy shaders and textures to build directory
+# Copy shaders and media to build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/textures DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/media DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
 # Add compile definitions for Wayland

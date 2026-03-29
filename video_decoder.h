@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <memory>
+#include <functional>
 #include "texture.h"
 
 class VideoDecoder {
@@ -35,6 +36,10 @@ public:
     // Set whether to loop video files (ignored for streams)
     void setLoop(bool loop) { m_loop = loop; }
 
+    // Callback invoked when a non-looping video reaches EOF
+    using OnEndCallback = std::function<void()>;
+    void setOnEndCallback(OnEndCallback cb) { m_onEndCallback = std::move(cb); }
+
     struct SourceInfo {
         int width = 0;
         int height = 0;
@@ -61,6 +66,7 @@ private:
 
     std::string m_source;
     bool m_loop = true;
+    OnEndCallback m_onEndCallback;
 };
 
 #endif // HAVE_FFMPEG

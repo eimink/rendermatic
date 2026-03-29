@@ -140,6 +140,7 @@ When auth is enabled and the connection is not yet authenticated:
 
 - **`authenticate`** is always accepted
 - **`get_device_info`** returns a reduced response (only `instanceName` and `authRequired`, no operational details)
+- **`identify`** is always accepted (physical operation for device location)
 - **All other commands** return:
   ```json
   { "command": "auth_required", "message": "Authentication required", "success": false }
@@ -368,6 +369,36 @@ Updates the device's instance name. The change is persisted to config and the mD
 
 ---
 
+### Identify
+
+#### `identify`
+
+Triggers a lower-third overlay on the device's screen showing its hostname, IP address, and WebSocket port. Used to visually locate a physical device on the network. The overlay is composited on top of whatever content is currently playing (textures, video, or streams) and dismisses automatically after the specified duration.
+
+This command is allowed **without authentication** — it is a physical operation useful for device location and does not expose sensitive data.
+
+**Request:**
+```json
+{ "command": "identify", "duration": 10 }
+```
+
+| Parameter  | Type | Required | Default | Description                          |
+|------------|------|----------|---------|--------------------------------------|
+| `duration` | int  | no       | `10`    | How long to show the overlay (1–60s) |
+
+**Response:**
+```json
+{
+    "command": "identify_response",
+    "success": true,
+    "duration": 10
+}
+```
+
+The overlay also appears automatically on boot for a configurable duration (default 5 seconds, controlled by `splashDurationSeconds` in `config.json`, set to `0` to disable).
+
+---
+
 ### Textures
 
 Rendermatic can display static images (PNG, JPG/JPEG) from its `textures/` directory.
@@ -462,11 +493,61 @@ Sets which texture is currently displayed on screen. Automatically loads the tex
 
 ---
 
+### Media Scanning
+
+The device stores both textures and videos in a shared `media/` directory. Files are differentiated by extension.
+
+#### `scan_videos`
+
+Scans the device's media directory for video files and returns the updated list.
+
+**Request:**
+```json
+{ "command": "scan_videos" }
+```
+
+**Response:**
+```json
+{
+    "command": "scan_videos_response",
+    "videos": ["intro.mp4", "loop.mkv", "promo.mov"],
+    "success": true
+}
+```
+
+| Field    | Type     | Description                                          |
+|----------|----------|------------------------------------------------------|
+| `videos` | string[] | All discovered video filenames (.mp4, .mkv, .mov, .avi, .webm, .flv) |
+
+---
+
+#### `list_videos`
+
+Returns videos already known from the last scan (does not rescan the filesystem).
+
+**Request:**
+```json
+{ "command": "list_videos" }
+```
+
+**Response:**
+```json
+{
+    "command": "video_list",
+    "videos": ["intro.mp4", "loop.mkv"],
+    "success": true
+}
+```
+
+---
+
 ### Video Playback
 
 Video commands are available when the device is built with FFmpeg support. If FFmpeg is not available, these commands return `success: false` with an appropriate message.
 
 When video playback is active, it takes priority over texture display. Stopping video returns the device to showing the current texture.
+
+Local video filenames are resolved from the `media/` directory. Stream URLs (rtmp://, rtsp://, etc.) are used as-is.
 
 #### `play_video`
 
@@ -583,6 +664,167 @@ Returns the current video playback state and source metadata.
 
 ---
 
+### Playlists
+
+Playlists allow playing a sequence of videos in order, with optional looping of the entire list. When a non-looping playlist finishes, the last frame of the last video remains on screen.
+
+Playlists can be set via WebSocket or loaded from a `playlist.m3u` file on the data partition.
+
+#### `set_playlist`
+
+Sets an ordered list of video sources to play. Sources can be local filenames (resolved from `media/`) or stream URLs. Persisted to `config.json`.
+
+**Request:**
+```json
+{ "command": "set_playlist", "videos": ["intro.mp4", "main-loop.mp4", "outro.mp4"], "loop": true }
+```
+
+| Parameter | Type     | Required | Default | Description                    |
+|-----------|----------|----------|---------|--------------------------------|
+| `videos`  | string[] | yes      | --      | Ordered list of video sources  |
+| `loop`    | bool     | no       | `true`  | Loop the entire playlist       |
+
+**Response:**
+```json
+{
+    "command": "set_playlist_response",
+    "success": true,
+    "count": 3
+}
+```
+
+---
+
+#### `start_playlist`
+
+Begins playing the playlist from the specified index (default 0).
+
+**Request:**
+```json
+{ "command": "start_playlist", "index": 0 }
+```
+
+| Parameter | Type | Required | Default | Description               |
+|-----------|------|----------|---------|---------------------------|
+| `index`   | int  | no       | `0`     | Start from this position  |
+
+**Response:**
+```json
+{
+    "command": "start_playlist_response",
+    "success": true
+}
+```
+
+---
+
+#### `stop_playlist`
+
+Stops playlist playback. The current frame remains on screen.
+
+**Request:**
+```json
+{ "command": "stop_playlist" }
+```
+
+**Response:**
+```json
+{
+    "command": "stop_playlist_response",
+    "success": true
+}
+```
+
+---
+
+#### `next_video`
+
+Skips to the next video in the playlist. Wraps to the beginning if looping is enabled.
+
+**Request:**
+```json
+{ "command": "next_video" }
+```
+
+**Response:**
+```json
+{
+    "command": "next_video_response",
+    "success": true,
+    "currentIndex": 2
+}
+```
+
+---
+
+#### `prev_video`
+
+Skips to the previous video in the playlist. Wraps to the end if looping is enabled.
+
+**Request:**
+```json
+{ "command": "prev_video" }
+```
+
+**Response:**
+```json
+{
+    "command": "prev_video_response",
+    "success": true,
+    "currentIndex": 0
+}
+```
+
+---
+
+#### `get_playlist_status`
+
+Returns the current playlist state.
+
+**Request:**
+```json
+{ "command": "get_playlist_status" }
+```
+
+**Response:**
+```json
+{
+    "command": "playlist_status",
+    "active": true,
+    "videos": ["intro.mp4", "main-loop.mp4", "outro.mp4"],
+    "currentIndex": 1,
+    "currentSource": "main-loop.mp4",
+    "loop": true,
+    "success": true
+}
+```
+
+| Field          | Type     | Description                          |
+|----------------|----------|--------------------------------------|
+| `active`       | bool     | Whether playlist is currently playing |
+| `videos`       | string[] | The playlist contents                |
+| `currentIndex` | int      | Index of the currently playing video |
+| `currentSource`| string   | Filename/URL of the current video    |
+| `loop`         | bool     | Whether the playlist loops           |
+
+---
+
+#### `playlist.m3u` file format
+
+Place a `playlist.m3u` file on the data partition for persistent playlists that load on boot. Standard M3U format — one file per line, comments start with `#`:
+
+```
+#EXTM3U
+#RENDERMATIC:LOOP=true
+intro.mp4
+main-loop.mp4
+outro.mp4
+```
+
+The `#RENDERMATIC:LOOP=false` directive disables playlist looping (default is `true`). Standard `#EXTINF` lines are accepted and ignored.
+
+---
+
 ## Command Summary
 
 | Command            | Response command          | Auth required | Description                          |
@@ -592,16 +834,25 @@ Returns the current video playback state and source metadata.
 | `clear_auth_key`   | `clear_auth_key_response` | Yes           | Remove key, return to open mode      |
 | `get_auth_status`  | `auth_status`             | Yes           | Query auth config and connection state |
 | `get_device_info`  | `device_info`             | Partial*      | Get device name, host, port, texture |
+| `identify`         | `identify_response`       | No            | Show device info overlay on screen   |
 | `set_device_name`  | `device_name_response`    | Yes           | Rename device (persisted + mDNS)     |
 | `scan_textures`    | `scan_textures_response`  | Yes           | Rescan filesystem, return list       |
 | `list_textures`    | `texture_list`            | Yes           | Return known textures from memory    |
 | `load_texture`     | `load_texture_response`   | Yes           | Load image file into memory          |
 | `set_texture`      | `set_texture_response`    | Yes           | Switch displayed texture             |
+| `scan_videos`      | `scan_videos_response`    | Yes           | Rescan media dir for video files     |
+| `list_videos`      | `video_list`              | Yes           | Return known videos from last scan   |
 | `play_video`       | `play_video_response`     | Yes           | Start video/stream playback          |
 | `stop_video`       | `stop_video_response`     | Yes           | Stop playback, return to texture     |
 | `get_video_status` | `video_status`            | Yes           | Query playback state and metadata    |
+| `set_playlist`     | `set_playlist_response`   | Yes           | Set ordered video playlist           |
+| `start_playlist`   | `start_playlist_response` | Yes           | Begin playlist playback              |
+| `stop_playlist`    | `stop_playlist_response`  | Yes           | Stop playlist playback               |
+| `next_video`       | `next_video_response`     | Yes           | Skip to next video in playlist       |
+| `prev_video`       | `prev_video_response`     | Yes           | Go back to previous video            |
+| `get_playlist_status` | `playlist_status`      | Yes           | Query playlist state                 |
 
-*`get_device_info` returns a reduced response (instance name only) when unauthenticated.
+*`get_device_info` returns a reduced response (instance name only) when unauthenticated. `identify` is always allowed regardless of auth state.
 
 ## Typical Workflows
 
@@ -685,6 +936,23 @@ Client                              Rendermatic
   |  {"success":true}                    |
   |<-------------------------------------|
 ```
+
+### Identify a device on the network
+
+```
+Client                              Rendermatic
+  |  {"command":"identify",              |
+  |   "duration":5}                      |
+  |------------------------------------->|
+  |  {"command":"identify_response",     |
+  |   "success":true, "duration":5}      |
+  |<-------------------------------------|
+  |                                      |
+  |  (device screen shows overlay with   |
+  |   hostname, IP, and port for 5s)     |
+```
+
+No authentication required — useful for scanning multiple devices to find the right one.
 
 ## Notes for Implementers
 

@@ -85,20 +85,42 @@ $CTR run --rm --privileged \
     -v "${OUTPUT_DIR}:/output:z" \
     -v "${SCRIPT_DIR}/mkimage.sh:/mkimage.sh:ro,z" \
     alpine:3.21 \
-    sh -c "apk add --no-cache e2fsprogs dosfstools mtools util-linux alpine-keys && sh /mkimage.sh /output/rootfs-${ARCH_LABEL}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB} ${TARGET}"
+    sh -c "apk add --no-cache e2fsprogs dosfstools mtools util-linux alpine-keys mkinitfs && sh /mkimage.sh /output/rootfs-${ARCH_LABEL}.tar /output/${IMAGE_NAME}.img ${IMAGE_SIZE_MB} ${TARGET}"
 
 rm -f "$ROOTFS_TAR"
 
-# --- Step 4: Compress ---
-echo "--- Compressing image ---"
+# --- Step 4: Convert to VM formats (opt-in) ---
+VMDK_FILE="${OUTPUT_DIR}/${IMAGE_NAME}.vmdk"
+
+if [ "${VMDK:-0}" = "1" ] && [ "$TARGET" != "rpi" ]; then
+    echo "--- Converting to VMDK ---"
+    $CTR run --rm \
+        --platform "$PLATFORM" \
+        -v "${OUTPUT_DIR}:/output:z" \
+        alpine:3.21 \
+        sh -c "apk add --no-cache qemu-img && qemu-img convert -f raw -O vmdk /output/${IMAGE_NAME}.img /output/${IMAGE_NAME}.vmdk"
+    echo "VMDK: ${VMDK_FILE} ($(du -h "${VMDK_FILE}" | cut -f1))"
+fi
+
+# --- Step 5: Compress ---
+echo "--- Compressing raw image ---"
 gzip -f "$OUTPUT_FILE"
 
 echo ""
 echo "=== Done ==="
-echo "Image: ${OUTPUT_FILE}.gz ($(du -h "${OUTPUT_FILE}.gz" | cut -f1))"
+echo "Raw image: ${OUTPUT_FILE}.gz ($(du -h "${OUTPUT_FILE}.gz" | cut -f1))"
+
+if [ -f "$VMDK_FILE" ]; then
+    echo "VMDK image: ${VMDK_FILE} ($(du -h "${VMDK_FILE}" | cut -f1))"
+    echo ""
+    echo "For VirtualBox / VMware:"
+    echo "  Use ${VMDK_FILE} directly as a virtual disk"
+fi
+
 echo ""
-echo "Flash to SD card / create VM disk:"
+echo "Flash to SD card / bare metal:"
 echo "  gunzip -c ${OUTPUT_FILE}.gz | sudo dd of=/dev/sdX bs=4M status=progress"
+
 echo ""
 echo "After flashing, mount the data partition (p3) to add your SSH key:"
 echo "  mount /dev/sdX3 /mnt"

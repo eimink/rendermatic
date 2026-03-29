@@ -15,7 +15,7 @@ void TextureManager::scanTextureDirectory() {
     std::lock_guard<std::mutex> lock(m_mutex);
     availableTextures.clear();
 
-    for (const auto& entry : std::filesystem::directory_iterator(TEXTURE_PATH)) {
+    for (const auto& entry : std::filesystem::directory_iterator(MEDIA_PATH)) {
         if (entry.is_regular_file()) {
             std::string ext = entry.path().extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);

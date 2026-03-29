@@ -54,7 +54,7 @@ std::string Loader::getShaderInPath(std::string shaderFilename)
 
 std::string Loader::getTextureInPath(std::string textureFilename)
 {
-    return std::format("{}{}", TEXTURE_PATH, textureFilename);
+    return std::format("{}{}", MEDIA_PATH, textureFilename);
 }
 
 std::vector<char> Loader::LoadShader(std::string shaderFilename)

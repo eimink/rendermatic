@@ -12,5 +12,6 @@ _deps
 CMakeUserPresets.json
 /build
 image/output/
+*.vmdk
 .vscode
 .DS_Store

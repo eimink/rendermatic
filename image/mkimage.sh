@@ -8,7 +8,7 @@
 # Layout (MBR):
 #   p1: 128MB FAT32  /boot  (kernel, initramfs, firmware)
 #   p2: var   ext4   /      (read-only rootfs)
-#   p3: 128MB ext4   /data  (writable, textures/config/logs)
+#   p3: 128MB ext4   /data  (writable, media/config/logs)
 #
 set -e
 
@@ -45,15 +45,21 @@ mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" \
 
 # Set hostname
 echo "rendermatic" > "$ROOTFS/etc/hostname"
+
+# resolv.conf → tmpfs so DHCP can update DNS on read-only root
+rm -f "$ROOTFS/etc/resolv.conf"
+ln -s /run/resolv.conf "$ROOTFS/etc/resolv.conf"
 printf "127.0.0.1\trendermatic localhost\n" > "$ROOTFS/etc/hosts"
 
 # Write fstab
 cat > "$ROOTFS/etc/fstab" << 'FSTAB'
-LABEL=root      /           ext4    ro,noatime              0 1
-LABEL=BOOT      /boot       vfat    ro,noatime              0 2
-LABEL=data      /data       ext4    rw,noatime,commit=60    0 2
-tmpfs           /tmp        tmpfs   nosuid,nodev            0 0
-tmpfs           /run        tmpfs   nosuid,nodev,mode=0755  0 0
+LABEL=root      /               ext4    ro,noatime              0 0
+LABEL=BOOT      /boot           vfat    ro,noatime              0 0
+LABEL=data      /data           ext4    rw,noatime              0 0
+tmpfs           /tmp            tmpfs   nosuid,nodev            0 0
+tmpfs           /run            tmpfs   nosuid,nodev,mode=0755  0 0
+tmpfs           /var/lib/dhcpcd tmpfs   nosuid,nodev,mode=0755  0 0
+tmpfs           /var/log        tmpfs   nosuid,nodev,mode=0755  0 0
 FSTAB
 
 # Ensure init scripts are executable
@@ -63,6 +69,18 @@ chmod +x "$ROOTFS/etc/init.d/data-mount" 2>/dev/null || true
 # Install kernel packages into rootfs
 APK_REPOS="--repository https://dl-cdn.alpinelinux.org/alpine/v3.21/main --repository https://dl-cdn.alpinelinux.org/alpine/v3.21/community"
 APK_BASE="apk --root $ROOTFS --initdb --no-cache --allow-untrusted $APK_REPOS --keys-dir /etc/apk/keys"
+
+# Configure mkinitfs features — write to BOTH container and rootfs
+# (apk triggers run in the container context, not inside rootfs)
+mkdir -p /etc/mkinitfs "$ROOTFS/etc/mkinitfs"
+case "$TARGET" in
+    rpi)
+        echo 'features="ata base ext4 mmc scsi usb"' | tee /etc/mkinitfs/mkinitfs.conf > "$ROOTFS/etc/mkinitfs/mkinitfs.conf"
+        ;;
+    *)
+        echo 'features="ata base ext4 nvme scsi usb virtio"' | tee /etc/mkinitfs/mkinitfs.conf > "$ROOTFS/etc/mkinitfs/mkinitfs.conf"
+        ;;
+esac
 
 case "$TARGET" in
     rpi)
@@ -74,6 +92,17 @@ case "$TARGET" in
         $APK_BASE add alpine-base linux-lts linux-firmware-none mkinitfs 2>&1 | tail -5
         ;;
 esac
+
+# Regenerate initramfs with correct features (in case trigger used wrong config)
+KVER=$(ls "$ROOTFS/lib/modules/" | head -1)
+if [ -n "$KVER" ]; then
+    echo "Regenerating initramfs for $KVER..."
+    mkinitfs -b "$ROOTFS" -o "$ROOTFS/boot/initramfs-lts" "$KVER"
+fi
+
+# Generate modules.dep (root is read-only at runtime)
+echo "Generating module dependencies..."
+depmod -b "$ROOTFS" "$KVER"
 
 # --- Prepare boot directory ---
 echo "Preparing boot files..."
@@ -114,35 +143,47 @@ CMDLINE
         ;;
 
     generic-arm64|vm-arm64)
-        # Generic aarch64 VM — boots via UEFI with extlinux
-        mkdir -p "$BOOTDIR/extlinux"
-        cat > "$BOOTDIR/extlinux/extlinux.conf" << 'BOOTCFG'
-DEFAULT rendermatic
-TIMEOUT 10
-LABEL rendermatic
-    LINUX /vmlinuz-lts
-    INITRD /initramfs-lts
-    APPEND root=LABEL=root ro quiet console=tty0
-BOOTCFG
+        echo "Installing GRUB EFI bootloader..."
+        apk add --no-cache grub-efi >/dev/null 2>&1
+        cat > /tmp/grub-early.cfg << 'GRUBCFG'
+search --label --set=root BOOT
+set timeout=0
+linux /vmlinuz-lts root=LABEL=root ro quiet console=tty0 modules=ext4
+initrd /initramfs-lts
+boot
+GRUBCFG
+        mkdir -p "$BOOTDIR/EFI/BOOT"
+        grub-mkimage -O arm64-efi \
+            -o "$BOOTDIR/EFI/BOOT/BOOTAA64.EFI" \
+            -c /tmp/grub-early.cfg \
+            -p /EFI/BOOT \
+            part_msdos part_gpt fat ext2 linux boot search search_label
         ;;
 
     x86_64)
-        cat > "$BOOTDIR/extlinux.conf" << 'BOOTCFG'
-DEFAULT rendermatic
-TIMEOUT 10
-LABEL rendermatic
-    LINUX /vmlinuz-lts
-    INITRD /initramfs-lts
-    APPEND root=LABEL=root ro quiet
-BOOTCFG
+        echo "Installing GRUB EFI bootloader..."
+        apk add --no-cache grub-efi >/dev/null 2>&1
+        cat > /tmp/grub-early.cfg << 'GRUBCFG'
+search --label --set=root BOOT
+set timeout=0
+linux /vmlinuz-lts root=LABEL=root ro quiet modules=ext4
+initrd /initramfs-lts
+boot
+GRUBCFG
+        mkdir -p "$BOOTDIR/EFI/BOOT"
+        grub-mkimage -O x86_64-efi \
+            -o "$BOOTDIR/EFI/BOOT/BOOTX64.EFI" \
+            -c /tmp/grub-early.cfg \
+            -p /EFI/BOOT \
+            part_msdos part_gpt fat ext2 linux boot search search_label
         ;;
 esac
 
 # --- Prepare data directory ---
 DATADIR="$WORK/data"
-mkdir -p "$DATADIR/textures" "$DATADIR/logs" "$DATADIR/ssh"
+mkdir -p "$DATADIR/media" "$DATADIR/logs" "$DATADIR/ssh"
 cp "$ROOTFS/rendermatic/config.json.default" "$DATADIR/config.json" 2>/dev/null || true
-cp "$ROOTFS/rendermatic/textures/"* "$DATADIR/textures/" 2>/dev/null || true
+cp "$ROOTFS/rendermatic/media/"* "$DATADIR/media/" 2>/dev/null || true
 touch "$DATADIR/.initialized"
 
 # Clear boot files from rootfs (they live on the boot partition)
@@ -166,12 +207,12 @@ done
 echo "Creating root partition (ext4)..."
 ROOT_IMG="$WORK/root.img"
 ROOT_BLOCKS=$((ROOT_MB * 1024))
-mke2fs -q -t ext4 -L root -O ^has_journal -d "$ROOTFS" "$ROOT_IMG" "${ROOT_BLOCKS}k"
+mke2fs -q -t ext4 -L root -O ^has_journal,^metadata_csum -d "$ROOTFS" "$ROOT_IMG" "${ROOT_BLOCKS}k"
 
 echo "Creating data partition (ext4)..."
 DATA_IMG="$WORK/data.img"
 DATA_BLOCKS=$((DATA_MB * 1024))
-mke2fs -q -t ext4 -L data -d "$DATADIR" "$DATA_IMG" "${DATA_BLOCKS}k"
+mke2fs -q -t ext4 -L data -O ^has_journal,^metadata_csum -d "$DATADIR" "$DATA_IMG" "${DATA_BLOCKS}k"
 
 # --- Assemble final image ---
 echo "Assembling disk image..."
@@ -203,13 +244,6 @@ start=$ROOT_START, size=$ROOT_SECTORS, type=83
 start=$DATA_START, type=83
 PARTS
 
-# x86_64: install MBR bootloader
-if [ "$TARGET" = "x86_64" ]; then
-    apk add --no-cache syslinux 2>/dev/null || true
-    if [ -f /usr/share/syslinux/mbr.bin ]; then
-        dd if=/usr/share/syslinux/mbr.bin of="$OUTPUT" bs=440 count=1 conv=notrunc 2>/dev/null
-    fi
-fi
 
 # Cleanup
 rm -rf "$WORK"

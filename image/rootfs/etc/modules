@@ -1,0 +1,5 @@
+virtio_pci
+virtio_net
+virtio_blk
+e1000
+e1000e
