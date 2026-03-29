@@ -2,8 +2,13 @@
 #include <iostream>
 #include <dlfcn.h>
 
-// Search paths for libndi.so
+// Search paths for NDI runtime library
 static const char* NDI_LIB_PATHS[] = {
+#ifdef __APPLE__
+    "/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
+    "/usr/local/lib/libndi.dylib",
+    "libndi.dylib",
+#else
     "/data/lib/libndi.so",          // Rendermatic data partition
     "/data/lib/libndi.so.6",
     "/usr/local/lib/libndi.so.6",   // Standard install
@@ -11,6 +16,7 @@ static const char* NDI_LIB_PATHS[] = {
     "/usr/lib/libndi.so.6",
     "libndi.so.6",                  // System LD path
     "libndi.so",
+#endif
     nullptr
 };
 
@@ -47,6 +53,7 @@ bool NDIReceiver::loadRuntime() {
     }
 
     if (!m_libHandle) {
+        std::cout << "NDI: Runtime not found (not installed)" << std::endl;
         return false;
     }
 
