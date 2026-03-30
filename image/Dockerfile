@@ -1,7 +1,9 @@
 # === Stage 1: Build DirectFB2 from source (not packaged in Debian 12+) ===
 FROM debian:trixie-slim AS dfb-builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/*.sources && \
+    echo 'deb http://deb.debian.org/debian trixie main non-free-firmware' > /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates \
     build-essential meson ninja-build pkg-config \
     libdrm-dev libfreetype-dev libjpeg-dev libpng-dev \
@@ -16,7 +18,9 @@ RUN git clone --depth 1 https://github.com/directfb2/DirectFB2.git /src/directfb
 # === Stage 2: Build rendermatic ===
 FROM debian:trixie-slim AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/*.sources && \
+    echo 'deb http://deb.debian.org/debian trixie main non-free-firmware' > /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates \
     cmake clang make pkg-config \
     libavformat-dev libavcodec-dev libswscale-dev libavutil-dev \
@@ -45,7 +49,9 @@ FROM debian:trixie-slim
 
 ARG TARGET=generic-arm64
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/*.sources && \
+    echo 'deb http://deb.debian.org/debian trixie main non-free-firmware' > /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     # DirectFB2 runtime deps
     libdrm2 libfreetype6 libjpeg62-turbo libpng16-16t64 \
     # FFmpeg runtime
@@ -53,11 +59,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # mDNS discovery
     avahi-daemon avahi-utils libavahi-client3 dbus \
     # Network
-    openssh-server iproute2 \
+    openssh-server iproute2 wpasupplicant \
     # Filesystem tools
     e2fsprogs dosfstools \
     # System
     systemd systemd-sysv systemd-resolved sudo kmod \
+    # Firmware (WiFi, Bluetooth, GPU)
+    firmware-linux-free firmware-iwlwifi \
     # Utilities
     wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*

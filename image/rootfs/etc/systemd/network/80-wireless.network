@@ -1,0 +1,9 @@
+[Match]
+Name=wlan* wlo* wlp*
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+UseDNS=yes
+UseHostname=false

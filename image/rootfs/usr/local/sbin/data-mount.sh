@@ -1,8 +1,6 @@
 #!/bin/sh
 # Mount data partition and bind writable paths into rendermatic
 
-set -e
-
 echo "Setting up rendermatic data paths"
 
 # Check that data partition is mounted
@@ -64,6 +62,37 @@ fi
 if $keys_changed; then
     sort -u /data/ssh/authorized_keys -o /data/ssh/authorized_keys
     echo "SSH keys provisioned successfully"
+fi
+
+# --- WiFi provisioning from boot partition ---
+# Format: first line = SSID, second line = password
+if [ -f /boot/wifi.txt ]; then
+    echo "Found wifi.txt on boot partition"
+    ssid=$(sed -n '1p' /boot/wifi.txt)
+    psk=$(sed -n '2p' /boot/wifi.txt)
+
+    if [ -n "$ssid" ] && [ -n "$psk" ]; then
+        mkdir -p /data/wifi
+        wpa_passphrase "$ssid" "$psk" > /data/wifi/wpa_supplicant.conf
+        echo "WiFi configured for SSID: $ssid"
+    else
+        echo "Warning: wifi.txt must contain SSID on line 1 and password on line 2"
+    fi
+
+    mount -o remount,rw /boot 2>/dev/null || true
+    rm -f /boot/wifi.txt
+    mount -o remount,ro /boot 2>/dev/null || true
+fi
+
+# Start wpa_supplicant if WiFi config exists and a wireless interface is present
+if [ -f /data/wifi/wpa_supplicant.conf ]; then
+    for iface in /sys/class/net/wl*; do
+        [ -e "$iface" ] || continue
+        ifname=$(basename "$iface")
+        echo "Starting wpa_supplicant on $ifname"
+        wpa_supplicant -B -i "$ifname" -c /data/wifi/wpa_supplicant.conf
+        break
+    done
 fi
 
 # Ensure render user owns the data partition

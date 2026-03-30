@@ -89,6 +89,7 @@ gpu_mem=64
 [pi3]
 kernel=vmlinuz
 initramfs initrd.img
+arm_64bit=1
 
 [pi4]
 kernel=vmlinuz

@@ -55,6 +55,17 @@ Copy your public key file to the BOOT partition as `authorized_keys`:
 cp ~/.ssh/id_ed25519.pub /Volumes/BOOT/authorized_keys
 ```
 
+#### 3. Configure WiFi (optional)
+
+To connect via WiFi instead of Ethernet, create a file called `wifi.txt` on the BOOT partition:
+
+```
+MyNetworkSSID
+MyPassword
+```
+
+First line is the SSID, second line is the password. The device will connect on first boot and remove the file.
+
 #### 3. Boot and connect
 
 Eject the media, insert it into the device, and power on. The device will:
@@ -72,14 +83,14 @@ The default password for the `render` user is `m4tic!` (both SSH and console).
 
 ### Flash Script (advanced)
 
-For automated/scripted flashing with key injection in one step:
+For automated/scripted flashing with key injection and WiFi in one step:
 
 ```bash
 # With a local SSH key
 sudo ./image/flash.sh rendermatic-rpi.img.gz /dev/sdX --key ~/.ssh/id_ed25519.pub
 
-# With GitHub keys
-sudo ./image/flash.sh rendermatic-rpi.img.gz /dev/sdX --github eimink
+# With GitHub keys and WiFi
+sudo ./image/flash.sh rendermatic-rpi.img.gz /dev/sdX --github eimink --wifi MyNetwork MyPassword
 
 # Multiple users
 sudo ./image/flash.sh rendermatic-rpi.img.gz /dev/sdX --github eimink --github other-dev
