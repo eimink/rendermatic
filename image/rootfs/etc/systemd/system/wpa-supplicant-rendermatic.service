@@ -1,0 +1,12 @@
+[Unit]
+Description=WiFi provisioning and WPA supplicant
+After=local-fs.target
+Before=systemd-networkd.service
+
+[Service]
+Type=forking
+ExecStart=/usr/local/sbin/wifi-start.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

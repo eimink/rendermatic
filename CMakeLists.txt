@@ -212,9 +212,10 @@ else()
             dfb_pure_renderer.cpp
         )
     else()
-        list(APPEND SOURCES 
+        list(APPEND SOURCES
             dfb_renderer.cpp
             dfb_pure_renderer.cpp
+            drm_egl_renderer.cpp
         )
     endif()
 endif()
@@ -295,7 +296,12 @@ target_include_directories(${PROJECT_NAME}
 
 # Platform specific configurations
 if(UNIX AND NOT APPLE)
-    if(DFB_ONLY)
+    if(DFB_ONLY AND NOT DFB_PURE_ONLY)
+        pkg_check_modules(GBM REQUIRED gbm)
+        pkg_check_modules(DRM REQUIRED libdrm)
+        target_link_libraries(${PROJECT_NAME} PRIVATE dl EGL ${GBM_LIBRARIES} ${DRM_LIBRARIES})
+        target_include_directories(${PROJECT_NAME} PRIVATE ${GBM_INCLUDE_DIRS} ${DRM_INCLUDE_DIRS})
+    elseif(DFB_PURE_ONLY)
         target_link_libraries(${PROJECT_NAME} PRIVATE dl)
     else()
         if(NOT HAVE_WAYLAND)

@@ -1,0 +1,13 @@
+[Unit]
+Description=Display IP address on framebuffer (fallback)
+After=data-mount.service systemd-networkd.service
+Wants=systemd-networkd.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/sbin/fb-fallback.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Rendermatic OTA update timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

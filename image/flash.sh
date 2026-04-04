@@ -10,6 +10,7 @@
 #   --key <path>           Add an SSH public key file
 #   --github <user>        Fetch SSH keys from GitHub on first boot
 #   --wifi <ssid> <pass>   Configure WiFi credentials
+#   --ota-url <url>        Configure OTA update server URL
 #
 # Examples:
 #   ./flash.sh rendermatic-rpi.img.gz /dev/sdX --key ~/.ssh/id_ed25519.pub
@@ -85,6 +86,14 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
             ;;
+        --ota-url)
+            shift
+            OTA_URL="$1"
+            if [ -z "$OTA_URL" ]; then
+                echo "Error: --ota-url requires a URL argument"
+                exit 1
+            fi
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -100,6 +109,7 @@ echo "Device: $DEVICE"
 [ -n "$KEYS" ] && echo "Keys:   $(echo "$KEYS" | wc -l | tr -d ' ') SSH key(s)"
 [ -n "$GITHUB_USERS" ] && echo "GitHub: $(echo "$GITHUB_USERS" | grep -c . | tr -d ' ') user(s)"
 [ -n "$WIFI_SSID" ] && echo "WiFi:   $WIFI_SSID"
+[ -n "$OTA_URL" ] && echo "OTA:    $OTA_URL"
 echo ""
 echo "WARNING: All data on $DEVICE will be destroyed!"
 printf "Continue? [y/N] "
@@ -116,7 +126,13 @@ if $IS_MACOS; then
     diskutil unmountDisk "$DEVICE" 2>/dev/null || true
     # Use raw device for faster writes
     RAW_DEVICE=$(echo "$DEVICE" | sed 's|/dev/disk|/dev/rdisk|')
-    gunzip -c "$IMAGE" | dd of="$RAW_DEVICE" bs=4m
+    if command -v pv >/dev/null 2>&1; then
+        # pv shows throughput - no percentage since gunzip -l is unreliable for large files
+        gunzip -c "$IMAGE" | pv | dd of="$RAW_DEVICE" bs=4m 2>/dev/null
+    else
+        echo "Writing $(du -h "$IMAGE" | cut -f1) compressed (press ctrl+T for progress)..."
+        gunzip -c "$IMAGE" | dd of="$RAW_DEVICE" bs=4m
+    fi
     sync
     # Re-probe partitions
     diskutil unmountDisk "$DEVICE" 2>/dev/null || true
@@ -163,6 +179,48 @@ if [ -n "$KEYS" ] || [ -n "$GITHUB_USERS" ] || [ -n "$WIFI_SSID" ]; then
     fi
 
     umount "$MOUNT_DIR"
+    rmdir "$MOUNT_DIR"
+fi
+
+# Provision OTA URL on the data partition
+if [ -n "$OTA_URL" ]; then
+    echo "--- Provisioning data partition ---"
+
+    # Data partition is the last partition (p3 standard, p4 A/B)
+    if $IS_MACOS; then
+        # Try p4 first (A/B), fall back to p3 (standard)
+        DATA_PART="${DEVICE}s4"
+        diskutil info "$DATA_PART" >/dev/null 2>&1 || DATA_PART="${DEVICE}s3"
+    else
+        case "$DEVICE" in
+            *nvme*|*mmcblk*|*loop*)
+                DATA_PART="${DEVICE}p4"
+                [ -b "$DATA_PART" ] || DATA_PART="${DEVICE}p3"
+                ;;
+            *)
+                DATA_PART="${DEVICE}4"
+                [ -b "$DATA_PART" ] || DATA_PART="${DEVICE}3"
+                ;;
+        esac
+    fi
+
+    MOUNT_DIR=$(mktemp -d)
+    MOUNTED=false
+    if $IS_MACOS; then
+        # macOS can't mount ext4 natively
+        echo ""
+        echo "NOTE: Cannot write ota.conf from macOS (ext4 partition)."
+        echo "After first boot, run:"
+        echo "  ssh render@rendermatic-XXXXXX.local 'echo \"OTA_URL=$OTA_URL\" | sudo tee /data/ota.conf'"
+    else
+        mount "$DATA_PART" "$MOUNT_DIR" && MOUNTED=true
+    fi
+
+    if $MOUNTED; then
+        printf 'OTA_URL=%s\n' "$OTA_URL" > "$MOUNT_DIR/ota.conf"
+        echo "Wrote ota.conf to data partition"
+        umount "$MOUNT_DIR"
+    fi
     rmdir "$MOUNT_DIR"
 fi
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Expand data partition to fill disk
+Before=data-mount.service
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/data-expand.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

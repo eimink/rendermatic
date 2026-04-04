@@ -1,14 +1,20 @@
 #!/bin/sh
-# Generate unique hostname from MAC address
+# Generate unique hostname from MAC address.
+# Waits for a non-loopback network interface to appear.
 
 mac=""
-for iface in /sys/class/net/*; do
-    [ -e "$iface/address" ] || continue
-    name=$(basename "$iface")
-    [ "$name" = "lo" ] && continue
-    mac=$(cat "$iface/address")
-    [ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ] && break
-    mac=""
+attempt=0
+while [ $attempt -lt 10 ]; do
+    for iface in /sys/class/net/*; do
+        [ -e "$iface/address" ] || continue
+        name=$(basename "$iface")
+        [ "$name" = "lo" ] && continue
+        mac=$(cat "$iface/address")
+        [ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ] && break 2
+        mac=""
+    done
+    attempt=$((attempt + 1))
+    sleep 1
 done
 
 if [ -n "$mac" ]; then
@@ -18,5 +24,5 @@ if [ -n "$mac" ]; then
     echo "Hostname set to $newhost"
 else
     hostnamectl set-hostname "rendermatic" 2>/dev/null || hostname "rendermatic"
-    echo "Warning: No MAC address found, using default hostname"
+    echo "Warning: No MAC address found after 10s, using default hostname"
 fi

@@ -31,11 +31,15 @@ bool DirectFBRenderer::init(int width, int height, const char* title, bool fulls
     m_height = height;
     DFBResult result;
     
-    // Initialize DirectFB with OpenGL support
-    result = DirectFBInit(nullptr, nullptr);
-    if (result != DFB_OK) {
-        std::cerr << "Failed to initialize DirectFB: " << DirectFBErrorString(result) << std::endl;
-        return false;
+    // Initialize DirectFB (only once per process)
+    static bool s_dfbInitialized = false;
+    if (!s_dfbInitialized) {
+        result = DirectFBInit(nullptr, nullptr);
+        if (result != DFB_OK) {
+            std::cerr << "Failed to initialize DirectFB: " << DirectFBErrorString(result) << std::endl;
+            return false;
+        }
+        s_dfbInitialized = true;
     }
 
     // Create the super interface with OpenGL support

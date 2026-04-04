@@ -6,12 +6,25 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates \
     build-essential meson ninja-build pkg-config \
-    libdrm-dev libfreetype-dev libjpeg-dev libpng-dev \
+    libdrm-dev libgbm-dev libfreetype-dev libjpeg-dev libpng-dev \
+    libegl-dev libgles-dev libgl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 https://github.com/directfb2/DirectFB2.git /src/directfb2 && \
     cd /src/directfb2 && \
     meson setup build -Dprefix=/usr -Dneon=false && \
+    meson compile -C build && \
+    DESTDIR=/dfb-install meson install -C build
+
+# Install DirectFB2 into system paths so DirectFBGL-EGL can find headers
+RUN cp -a /dfb-install/usr/lib/* /usr/lib/ && \
+    cp -a /dfb-install/usr/include/* /usr/include/ && \
+    ldconfig
+
+# Build DirectFBGL-EGL (OpenGL interface for DirectFB2)
+RUN git clone --depth 1 https://github.com/directfb2/DirectFBGL-EGL.git /src/directfbgl && \
+    cd /src/directfbgl && \
+    meson setup build -Dprefix=/usr && \
     meson compile -C build && \
     DESTDIR=/dfb-install meson install -C build
 
@@ -25,6 +38,8 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     cmake clang make pkg-config \
     libavformat-dev libavcodec-dev libswscale-dev libavutil-dev \
     libavahi-client-dev \
+    libegl-dev libgles-dev libgl-dev \
+    libdrm-dev libgbm-dev \
     python3 python3-jinja2 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,7 +51,7 @@ WORKDIR /src
 COPY . .
 
 RUN rm -rf build && mkdir build && cd build && \
-    cmake -DDFB_PURE_ONLY=ON \
+    cmake -DDFB_ONLY=ON \
           -DCMAKE_C_COMPILER=clang \
           -DCMAKE_CXX_COMPILER=clang++ \
           -DPython_EXECUTABLE=$(which python3) \
@@ -54,18 +69,20 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     apt-get update && apt-get install -y --no-install-recommends \
     # DirectFB2 runtime deps
     libdrm2 libfreetype6 libjpeg62-turbo libpng16-16t64 \
+    # OpenGL/EGL runtime + Mesa DRI drivers (Intel, AMD, Broadcom, llvmpipe)
+    libegl1 libgl1 libgles2 libgl1-mesa-dri libgbm1 \
     # FFmpeg runtime
     libavformat61 libavcodec61 libswscale8 libavutil59 \
     # mDNS discovery
     avahi-daemon avahi-utils libavahi-client3 dbus \
     # Network
     openssh-server iproute2 wpasupplicant \
-    # Filesystem tools
-    e2fsprogs dosfstools \
+    # Filesystem tools (fdisk + parted for data partition expansion)
+    e2fsprogs dosfstools fdisk parted \
     # System
     systemd systemd-sysv systemd-resolved sudo kmod \
     # Firmware (WiFi, Bluetooth, GPU)
-    firmware-linux-free firmware-iwlwifi \
+    firmware-linux-free firmware-iwlwifi firmware-amd-graphics firmware-misc-nonfree \
     # Utilities
     wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -83,7 +100,8 @@ RUN mkdir -p /etc/initramfs-tools && \
     fi
 
 # Install target-specific kernel
-RUN apt-get update && \
+# DRACUT_NO_XATTR suppresses harmless xattr warnings from mkinitramfs in containers
+RUN export DRACUT_NO_XATTR=1 && apt-get update && \
     if [ "$TARGET" = "rpi" ]; then \
         apt-get install -y --no-install-recommends \
             linux-image-arm64 raspi-firmware; \
@@ -108,13 +126,18 @@ COPY image/rootfs/ /
 
 # Enable services and configure system
 RUN systemctl enable rendermatic.service && \
+    systemctl enable data-expand.service && \
     systemctl enable data-mount.service && \
     systemctl enable hostname-gen.service && \
     systemctl enable ssh.service && \
     systemctl enable avahi-daemon.service && \
     systemctl enable systemd-networkd.service && \
     systemctl enable systemd-resolved.service && \
+    systemctl enable fb-fallback.service && \
+    systemctl enable wpa-supplicant-rendermatic.service && \
+    systemctl enable rendermatic-update.timer && \
     # Create render user
+    groupadd -f render && \
     useradd -g render -m -d /data -s /bin/bash render && \
     echo 'render:m4tic!' | chpasswd && \
     echo 'render ALL=(ALL) ALL' > /etc/sudoers.d/render && \
@@ -124,11 +147,25 @@ RUN systemctl enable rendermatic.service && \
     sed -i 's/#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     ssh-keygen -A && \
+    # Disable all console logins (rendermatic owns the framebuffer)
+    systemctl mask getty@.service && \
+    systemctl mask getty.target && \
+    systemctl mask serial-getty@.service && \
+    # Fast boot: don't block on network, disable unused services
+    systemctl mask systemd-networkd-wait-online.service && \
+    systemctl mask apt-daily.timer && \
+    systemctl mask apt-daily-upgrade.timer && \
+    systemctl mask e2scrub_all.timer && \
+    systemctl mask fstrim.timer && \
     # Create data mount point
     mkdir -p /data && \
     # Make scripts executable
     chmod +x /rendermatic/rendermatic && \
     chmod +x /usr/local/sbin/data-mount.sh && \
-    chmod +x /usr/local/sbin/hostname-gen.sh
+    chmod +x /usr/local/sbin/hostname-gen.sh && \
+    chmod +x /usr/local/sbin/fb-fallback.sh && \
+    chmod +x /usr/local/sbin/wifi-start.sh && \
+    chmod +x /usr/local/sbin/data-expand.sh && \
+    chmod +x /usr/local/sbin/ota-update.sh
 
 CMD ["/rendermatic/rendermatic"]

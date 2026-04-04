@@ -24,10 +24,15 @@ bool DirectFBPureRenderer::init(int width, int height, const char* title, bool f
     m_height = height;
     DFBResult result;
 
-    result = DirectFBInit(nullptr, nullptr);
-    if (result != DFB_OK) {
-        std::cerr << "Failed to initialize DirectFB: " << DirectFBErrorString(result) << std::endl;
-        return false;
+    // Initialize DirectFB (only once per process)
+    static bool s_dfbInitialized = false;
+    if (!s_dfbInitialized) {
+        result = DirectFBInit(nullptr, nullptr);
+        if (result != DFB_OK) {
+            std::cerr << "Failed to initialize DirectFB: " << DirectFBErrorString(result) << std::endl;
+            return false;
+        }
+        s_dfbInitialized = true;
     }
 
     result = DirectFBCreate(&m_dfb);

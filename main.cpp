@@ -1,4 +1,5 @@
 #include "dfb_pure_renderer.h"
+#include "drm_egl_renderer.h"
 #include "irenderer.h"
 #include "loader.h"
 #include "config.h"
@@ -46,7 +47,7 @@ int main(int argc, char* argv[]) {
     renderer = std::make_unique<DirectFBPureRenderer>();
 #else
 #ifdef DFB_ONLY
-    renderer = std::make_unique<DirectFBRenderer>();
+    renderer = std::make_unique<DrmEglRenderer>();
 #else
     if (config.backend == "glfw") {
         renderer = std::make_unique<GLFWRenderer>();
@@ -95,7 +96,16 @@ int main(int argc, char* argv[]) {
     mdnsAdvertiser.publish();
     
     if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
+#ifdef DFB_ONLY
+        std::cerr << "DRM/EGL failed, falling back to software renderer" << std::endl;
+        renderer = std::make_unique<DirectFBPureRenderer>();
+        if (!renderer->init(config.width, config.height, "Display", config.fullscreen, config.monitorIndex)) {
+            std::cerr << "Software renderer also failed" << std::endl;
+            return -1;
+        }
+#else
         return -1;
+#endif
     }
     renderer->setFullscreenScaling(config.fullscreenScaling);
     renderer->setRotation(config.displayRotation);

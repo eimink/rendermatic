@@ -9,38 +9,25 @@
 #include <avahi-common/malloc.h>
 #include <avahi-common/thread-watch.h>
 
-static void avahi_client_callback(AvahiClient* c, AvahiClientState state, void* userdata);
-static void avahi_entry_group_callback(AvahiEntryGroup* g, AvahiEntryGroupState state, void* userdata);
-
 struct MDNSContext {
     AvahiClient* client = nullptr;
     AvahiEntryGroup* group = nullptr;
     AvahiThreadedPoll* threadedPoll = nullptr;
+    std::string instanceName;
+    uint16_t port = 0;
+    bool published = false;
 };
 
-static void avahi_client_callback(AvahiClient* c, AvahiClientState state, void* userdata) {
-    (void)userdata;
-    switch (state) {
-        case AVAHI_CLIENT_S_RUNNING:
-            break;
-        case AVAHI_CLIENT_FAILURE:
-            std::cerr << "Warning: Avahi client failure: " << avahi_strerror(avahi_client_errno(c)) << std::endl;
-            break;
-        case AVAHI_CLIENT_S_COLLISION:
-            std::cerr << "Warning: Avahi host name collision" << std::endl;
-            break;
-        case AVAHI_CLIENT_S_REGISTERING:
-            break;
-        case AVAHI_CLIENT_CONNECTING:
-            break;
-    }
-}
+static void create_services(MDNSContext* ctx);
 
 static void avahi_entry_group_callback(AvahiEntryGroup* g, AvahiEntryGroupState state, void* userdata) {
     (void)g;
-    (void)userdata;
+    auto* ctx = static_cast<MDNSContext*>(userdata);
     switch (state) {
         case AVAHI_ENTRY_GROUP_ESTABLISHED:
+            std::cout << "Published mDNS service: " << ctx->instanceName
+                      << "._rendermatic._tcp on port " << ctx->port << std::endl;
+            ctx->published = true;
             break;
         case AVAHI_ENTRY_GROUP_COLLISION:
             std::cerr << "Warning: Avahi service collision" << std::endl;
@@ -49,9 +36,59 @@ static void avahi_entry_group_callback(AvahiEntryGroup* g, AvahiEntryGroupState 
             std::cerr << "Warning: Avahi entry group failure" << std::endl;
             break;
         case AVAHI_ENTRY_GROUP_UNCOMMITED:
-            break;
         case AVAHI_ENTRY_GROUP_REGISTERING:
             break;
+    }
+}
+
+static void avahi_client_callback(AvahiClient* c, AvahiClientState state, void* userdata) {
+    auto* ctx = static_cast<MDNSContext*>(userdata);
+    switch (state) {
+        case AVAHI_CLIENT_S_RUNNING:
+            // Daemon is ready — register our service
+            create_services(ctx);
+            break;
+        case AVAHI_CLIENT_FAILURE:
+            std::cerr << "Warning: Avahi client failure: " << avahi_strerror(avahi_client_errno(c)) << std::endl;
+            break;
+        case AVAHI_CLIENT_S_COLLISION:
+        case AVAHI_CLIENT_S_REGISTERING:
+            // Reset group if we had one, will re-register when RUNNING
+            if (ctx->group) {
+                avahi_entry_group_reset(ctx->group);
+            }
+            break;
+        case AVAHI_CLIENT_CONNECTING:
+            // Still waiting for daemon — NO_FAIL mode keeps trying
+            break;
+    }
+}
+
+static void create_services(MDNSContext* ctx) {
+    if (!ctx->client) return;
+
+    if (!ctx->group) {
+        ctx->group = avahi_entry_group_new(ctx->client, avahi_entry_group_callback, ctx);
+        if (!ctx->group) {
+            std::cerr << "Warning: Failed to create Avahi entry group" << std::endl;
+            return;
+        }
+    }
+
+    if (avahi_entry_group_is_empty(ctx->group)) {
+        if (avahi_entry_group_add_service(
+            ctx->group,
+            AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, (AvahiPublishFlags)0,
+            ctx->instanceName.c_str(), "_rendermatic._tcp",
+            nullptr, nullptr, ctx->port, nullptr) < 0) {
+            std::cerr << "Warning: Failed to add Avahi service" << std::endl;
+            return;
+        }
+
+        if (avahi_entry_group_commit(ctx->group) < 0) {
+            std::cerr << "Warning: Failed to commit Avahi entry group" << std::endl;
+            return;
+        }
     }
 }
 
@@ -82,83 +119,45 @@ bool MDNSAdvertiser::publish() {
         m_ctx = std::make_unique<MDNSContext>();
     }
 
-    int error = 0;
+    m_ctx->instanceName = m_instanceName;
+    m_ctx->port = m_port;
 
     m_ctx->threadedPoll = avahi_threaded_poll_new();
     if (!m_ctx->threadedPoll) {
-        std::cerr << "Warning: Failed to create Avahi threaded poll object" << std::endl;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
+        std::cerr << "Warning: Failed to create Avahi threaded poll, continuing without mDNS" << std::endl;
         return false;
     }
 
-    AvahiClientFlags flags = (AvahiClientFlags)0;
-    m_ctx->client = avahi_client_new(avahi_threaded_poll_get(m_ctx->threadedPoll), flags, avahi_client_callback, nullptr, &error);
+    // Start poll thread BEFORE creating client — the client callback fires
+    // on the poll thread, so it must be running to process events
+    if (avahi_threaded_poll_start(m_ctx->threadedPoll) < 0) {
+        std::cerr << "Warning: Failed to start Avahi poll, continuing without mDNS" << std::endl;
+        avahi_threaded_poll_free(m_ctx->threadedPoll);
+        m_ctx->threadedPoll = nullptr;
+        return false;
+    }
+
+    // Lock the poll thread while creating the client (thread safety)
+    avahi_threaded_poll_lock(m_ctx->threadedPoll);
+
+    int error = 0;
+    m_ctx->client = avahi_client_new(
+        avahi_threaded_poll_get(m_ctx->threadedPoll),
+        AVAHI_CLIENT_NO_FAIL,
+        avahi_client_callback, m_ctx.get(), &error);
+
+    avahi_threaded_poll_unlock(m_ctx->threadedPoll);
+
     if (!m_ctx->client) {
         std::cerr << "Warning: Failed to create Avahi client: " << avahi_strerror(error) << std::endl;
+        avahi_threaded_poll_stop(m_ctx->threadedPoll);
         avahi_threaded_poll_free(m_ctx->threadedPoll);
         m_ctx->threadedPoll = nullptr;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
         return false;
     }
 
-    if (avahi_threaded_poll_start(m_ctx->threadedPoll) < 0) {
-        std::cerr << "Warning: Failed to start Avahi threaded poll" << std::endl;
-        avahi_client_free(m_ctx->client);
-        avahi_threaded_poll_free(m_ctx->threadedPoll);
-        m_ctx->client = nullptr;
-        m_ctx->threadedPoll = nullptr;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
-        return false;
-    }
-
-    m_ctx->group = avahi_entry_group_new(m_ctx->client, avahi_entry_group_callback, nullptr);
-    if (!m_ctx->group) {
-        std::cerr << "Warning: Failed to create Avahi entry group" << std::endl;
-        avahi_client_free(m_ctx->client);
-        avahi_threaded_poll_free(m_ctx->threadedPoll);
-        m_ctx->client = nullptr;
-        m_ctx->threadedPoll = nullptr;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
-        return false;
-    }
-
-    if (avahi_entry_group_add_service(
-        m_ctx->group,
-        AVAHI_IF_UNSPEC,
-        AVAHI_PROTO_UNSPEC,
-        (AvahiPublishFlags)0,
-        m_instanceName.c_str(),
-        "_rendermatic._tcp",
-        nullptr,
-        nullptr,
-        m_port,
-        nullptr) < 0) {
-
-        std::cerr << "Warning: Failed to add Avahi service" << std::endl;
-        avahi_entry_group_free(m_ctx->group);
-        avahi_client_free(m_ctx->client);
-        avahi_threaded_poll_free(m_ctx->threadedPoll);
-        m_ctx->group = nullptr;
-        m_ctx->client = nullptr;
-        m_ctx->threadedPoll = nullptr;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
-        return false;
-    }
-
-    if (avahi_entry_group_commit(m_ctx->group) < 0) {
-        std::cerr << "Warning: Failed to commit Avahi entry group" << std::endl;
-        avahi_entry_group_free(m_ctx->group);
-        avahi_client_free(m_ctx->client);
-        avahi_threaded_poll_free(m_ctx->threadedPoll);
-        m_ctx->group = nullptr;
-        m_ctx->client = nullptr;
-        m_ctx->threadedPoll = nullptr;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
-        return false;
-    }
-
+    // Service registration happens async in avahi_client_callback when daemon is ready
     m_published = true;
-    std::cout << "Published mDNS service: " << m_instanceName << "._rendermatic._tcp on port " << m_port << std::endl;
     return true;
 
 #elif defined(HAVE_BONJOUR)
@@ -168,22 +167,15 @@ bool MDNSAdvertiser::publish() {
 
     DNSServiceErrorType err = DNSServiceRegister(
         &m_ctx->serviceRef,
-        0,                          // flags
-        0,                          // interface index (all)
-        m_instanceName.c_str(),     // service name
-        "_rendermatic._tcp",        // service type
-        nullptr,                    // domain (default)
-        nullptr,                    // host (default)
-        htons(m_port),              // port (network byte order)
-        0,                          // TXT record length
-        nullptr,                    // TXT record
-        nullptr,                    // callback
-        nullptr                     // context
-    );
+        0, 0,
+        m_instanceName.c_str(),
+        "_rendermatic._tcp",
+        nullptr, nullptr,
+        htons(m_port),
+        0, nullptr, nullptr, nullptr);
 
     if (err != kDNSServiceErr_NoError) {
         std::cerr << "Warning: Failed to register Bonjour service (error " << err << ")" << std::endl;
-        std::cerr << "Warning: mDNS publication failed, continuing without discovery" << std::endl;
         return false;
     }
 
@@ -200,12 +192,12 @@ bool MDNSAdvertiser::publish() {
 void MDNSAdvertiser::unpublish() {
 #ifdef HAVE_AVAHI
     if (m_ctx) {
+        if (m_ctx->threadedPoll) {
+            avahi_threaded_poll_stop(m_ctx->threadedPoll);
+        }
         if (m_ctx->group) {
             avahi_entry_group_free(m_ctx->group);
             m_ctx->group = nullptr;
-        }
-        if (m_ctx->threadedPoll) {
-            avahi_threaded_poll_stop(m_ctx->threadedPoll);
         }
         if (m_ctx->client) {
             avahi_client_free(m_ctx->client);
@@ -216,6 +208,7 @@ void MDNSAdvertiser::unpublish() {
             m_ctx->threadedPoll = nullptr;
         }
         m_published = false;
+        m_ctx->published = false;
     }
 #elif defined(HAVE_BONJOUR)
     if (m_ctx && m_ctx->serviceRef) {
@@ -230,28 +223,21 @@ bool MDNSAdvertiser::updateInstanceName(const std::string& newName) {
     m_instanceName = newName;
 
 #ifdef HAVE_AVAHI
-    if (m_published && m_ctx && m_ctx->client && m_ctx->group) {
-        avahi_entry_group_reset(m_ctx->group);
-
-        if (avahi_entry_group_add_service(
-            m_ctx->group,
-            AVAHI_IF_UNSPEC,
-            AVAHI_PROTO_UNSPEC,
-            (AvahiPublishFlags)0,
-            m_instanceName.c_str(),
-            "_rendermatic._tcp",
-            nullptr,
-            nullptr,
-            m_port,
-            nullptr) < 0) {
-
-            std::cerr << "Warning: Failed to add updated Avahi service" << std::endl;
-            return true;
+    if (m_ctx) {
+        // Lock the poll to safely modify state
+        if (m_ctx->threadedPoll) {
+            avahi_threaded_poll_lock(m_ctx->threadedPoll);
         }
 
-        if (avahi_entry_group_commit(m_ctx->group) < 0) {
-            std::cerr << "Warning: Failed to commit updated Avahi entry group" << std::endl;
-            return true;
+        m_ctx->instanceName = newName;
+
+        if (m_ctx->group) {
+            avahi_entry_group_reset(m_ctx->group);
+            create_services(m_ctx.get());
+        }
+
+        if (m_ctx->threadedPoll) {
+            avahi_threaded_poll_unlock(m_ctx->threadedPoll);
         }
 
         std::cout << "Updated mDNS instance name to: " << newName << std::endl;
