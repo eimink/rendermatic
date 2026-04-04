@@ -77,9 +77,14 @@ mkdir -p "$OUTPUT_DIR"
 # --- Step 1: Build rendermatic rootfs ---
 echo "--- Building rootfs ---"
 
+# Version: timestamp + git hash (timestamp sorts correctly for upgrade/downgrade checks)
+BUILD_VERSION="$(date -u +%Y%m%d.%H%M%S).$(git -C "$PROJECT_DIR" rev-parse --short HEAD 2>/dev/null || echo nogit)"
+echo "Version:           ${BUILD_VERSION}"
+
 $CTR build \
     --platform "$PLATFORM" \
     --build-arg "TARGET=${TARGET}" \
+    --build-arg "BUILD_VERSION=${BUILD_VERSION}" \
     --file "${SCRIPT_DIR}/Dockerfile" \
     --tag "rendermatic-rootfs:${TARGET}" \
     "$PROJECT_DIR"
@@ -127,7 +132,17 @@ if [ "$AB_LAYOUT" = "1" ]; then
             tar xf /output/rootfs-${TARGET}.tar -C \$WORK/rootfs
             rm -f \$WORK/rootfs/.dockerenv
             rm -rf \$WORK/rootfs/dev/* \$WORK/rootfs/proc/* \$WORK/rootfs/sys/*
-            mkdir -p \$WORK/rootfs/dev \$WORK/rootfs/proc \$WORK/rootfs/sys \$WORK/rootfs/data \$WORK/rootfs/tmp \$WORK/rootfs/run
+            mkdir -p \$WORK/rootfs/dev \$WORK/rootfs/proc \$WORK/rootfs/sys \$WORK/rootfs/data \$WORK/rootfs/boot \$WORK/rootfs/tmp \$WORK/rootfs/run
+
+            # Apply the same fixups as mkimage.sh
+            HOSTNAME=\$(cat \$WORK/rootfs/etc/hostname 2>/dev/null | tr -d '[:space:]')
+            case \"\$HOSTNAME\" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) HOSTNAME=\"\" ;; esac
+            HOSTNAME=\"\${HOSTNAME:-rendermatic}\"
+            echo \"\$HOSTNAME\" > \$WORK/rootfs/etc/hostname
+            rm -f \$WORK/rootfs/etc/resolv.conf
+            ln -s /run/systemd/resolve/resolv.conf \$WORK/rootfs/etc/resolv.conf
+            printf '127.0.0.1\t%s localhost\n' \"\$HOSTNAME\" > \$WORK/rootfs/etc/hosts
+            printf 'LABEL=root-a      /               ext4    ro,noatime              0 0\nLABEL=BOOT      /boot           vfat    ro,noatime              0 0\nLABEL=data      /data           ext4    rw,noatime,nofail        0 0\ntmpfs           /tmp            tmpfs   nosuid,nodev            0 0\ntmpfs           /run            tmpfs   nosuid,nodev,mode=0755  0 0\ntmpfs           /var/lib/systemd tmpfs  nosuid,nodev,mode=0755  0 0\ntmpfs           /var/log        tmpfs   nosuid,nodev,mode=0755  0 0\n' > \$WORK/rootfs/etc/fstab
 
             # Extract boot files BEFORE clearing them from rootfs
             mkdir -p \$WORK/boot
@@ -142,8 +157,10 @@ if [ "$AB_LAYOUT" = "1" ]; then
             KVER=\$(ls \$WORK/rootfs/lib/modules/ 2>/dev/null | head -1)
             [ -n \"\$KVER\" ] && depmod -b \$WORK/rootfs \$KVER
 
-            # Create rootfs partition image (same size as in the A/B image)
-            ROOT_MB=\$(( (${IMAGE_SIZE_MB} - 128 - 128 - 1) / 2 ))
+            # Create rootfs partition image - must match A/B partition size.
+            # Boot is 384MB for A/B (512 for RPi), data is DATA_MB.
+            BOOT_MB=384
+            ROOT_MB=\$(( (${IMAGE_SIZE_MB} - BOOT_MB - ${DATA_MB:-128} - 1) / 2 ))
             ROOT_BLOCKS=\$((ROOT_MB * 1024))
             mke2fs -q -t ext4 -L root-a -O ^has_journal,^metadata_csum -d \$WORK/rootfs /output/${IMAGE_NAME}-rootfs.img \"\${ROOT_BLOCKS}k\"
             rm -rf \$WORK
@@ -152,6 +169,11 @@ if [ "$AB_LAYOUT" = "1" ]; then
     gzip -f "$OTA_ROOTFS"
     echo "OTA rootfs: ${OTA_ROOTFS}.gz ($(du -h "${OTA_ROOTFS}.gz" | cut -f1))"
     echo "OTA boot:   ${OTA_BOOT} ($(du -h "${OTA_BOOT}" | cut -f1))"
+
+    # Version files for OTA server (deploy alongside the artifacts)
+    echo "$BUILD_VERSION" > "${OUTPUT_DIR}/version"
+    echo "$BUILD_VERSION" > "${OUTPUT_DIR}/boot-version"
+    echo "OTA version: ${BUILD_VERSION}"
 fi
 
 [ "$AB_LAYOUT" = "1" ] && rm -f "$ROOTFS_TAR"

@@ -73,6 +73,8 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     libegl1 libgl1 libgles2 libgl1-mesa-dri libgbm1 \
     # FFmpeg runtime
     libavformat61 libavcodec61 libswscale8 libavutil59 \
+    # VA-API hardware video decode (Intel/AMD)
+    libva2 libva-drm2 mesa-va-drivers intel-media-va-driver \
     # mDNS discovery
     avahi-daemon avahi-utils libavahi-client3 dbus \
     # Network
@@ -123,6 +125,10 @@ COPY --from=builder /src/build/bin/config.json /rendermatic/config.json
 
 # System overlay (systemd units, configs, scripts)
 COPY image/rootfs/ /
+
+# Version stamp (set via build arg, defaults to "dev")
+ARG BUILD_VERSION=dev
+RUN echo "$BUILD_VERSION" > /etc/rendermatic-version
 
 # Enable services and configure system
 RUN systemctl enable rendermatic.service && \

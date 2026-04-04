@@ -4,7 +4,8 @@
 enum class ColorFormat {
     RGBA,
     UYVY,
-    UYVA
+    UYVA,
+    NV12
 };
 
 struct Texture {

@@ -204,42 +204,58 @@ bool DrmEglRenderer::initEgl() {
     }
     std::cout << "DRM/EGL: EGL " << major << "." << minor << std::endl;
 
-    // Use OpenGL (not GLES) to keep shader compatibility
     if (!eglBindAPI(EGL_OPENGL_API)) {
-        std::cerr << "DRM/EGL: Failed to bind OpenGL API, trying GLES" << std::endl;
-        if (!eglBindAPI(EGL_OPENGL_ES_API)) {
-            std::cerr << "DRM/EGL: Failed to bind any GL API" << std::endl;
-            return false;
-        }
+        std::cerr << "DRM/EGL: Failed to bind OpenGL API" << std::endl;
+        return false;
     }
 
-    // Find EGL config matching our GBM format
+    // Find EGL config matching our GBM surface format (XRGB8888).
+    // Request a minimal config and then pick the one matching the GBM format,
+    // rather than over-constraining with EGL_OPENGL_BIT which can mismatch.
     EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8,
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 0,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
         EGL_NONE
     };
 
-    EGLConfig configs[32];
+    EGLConfig configs[64];
     EGLint numConfigs;
-    if (!eglChooseConfig(display, configAttribs, configs, 32, &numConfigs) || numConfigs == 0) {
-        std::cerr << "DRM/EGL: Failed to choose EGL config" << std::endl;
+    if (!eglChooseConfig(display, configAttribs, configs, 64, &numConfigs) || numConfigs == 0) {
+        std::cerr << "DRM/EGL: No EGL configs found" << std::endl;
         return false;
     }
 
     // Pick config whose native visual ID matches GBM_FORMAT_XRGB8888
-    EGLConfig config = configs[0];
+    EGLConfig config = nullptr;
     for (int i = 0; i < numConfigs; i++) {
         EGLint id;
         eglGetConfigAttrib(display, configs[i], EGL_NATIVE_VISUAL_ID, &id);
-        if (id == GBM_FORMAT_XRGB8888) {
+        if ((uint32_t)id == GBM_FORMAT_XRGB8888) {
             config = configs[i];
             break;
         }
+    }
+    if (!config) {
+        std::cerr << "DRM/EGL: No config matching GBM_FORMAT_XRGB8888 (tried " << numConfigs << " configs)" << std::endl;
+        // Dump what's available for debugging
+        for (int i = 0; i < numConfigs && i < 5; i++) {
+            EGLint id, r, g, b, a, surfType, rendType;
+            eglGetConfigAttrib(display, configs[i], EGL_NATIVE_VISUAL_ID, &id);
+            eglGetConfigAttrib(display, configs[i], EGL_RED_SIZE, &r);
+            eglGetConfigAttrib(display, configs[i], EGL_GREEN_SIZE, &g);
+            eglGetConfigAttrib(display, configs[i], EGL_BLUE_SIZE, &b);
+            eglGetConfigAttrib(display, configs[i], EGL_ALPHA_SIZE, &a);
+            eglGetConfigAttrib(display, configs[i], EGL_SURFACE_TYPE, &surfType);
+            eglGetConfigAttrib(display, configs[i], EGL_RENDERABLE_TYPE, &rendType);
+            std::cerr << "  config[" << i << "]: visual=0x" << std::hex << id
+                      << " rgba=" << std::dec << r << "/" << g << "/" << b << "/" << a
+                      << " surf=0x" << std::hex << surfType
+                      << " rend=0x" << rendType << std::dec << std::endl;
+        }
+        return false;
     }
 
     // Create OpenGL 3.3 core context
@@ -252,7 +268,7 @@ bool DrmEglRenderer::initEgl() {
 
     EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
     if (context == EGL_NO_CONTEXT) {
-        std::cerr << "DRM/EGL: GL 3.3 unavailable, trying 3.0" << std::endl;
+        std::cerr << "DRM/EGL: GL 3.3 core unavailable, trying 3.0 compat" << std::endl;
         EGLint fallbackAttribs[] = {
             EGL_CONTEXT_MAJOR_VERSION, 3,
             EGL_CONTEXT_MINOR_VERSION, 0,
@@ -356,11 +372,21 @@ bool DrmEglRenderer::initGl() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // Setup texture
+    // Setup textures (main + UV plane for NV12)
     glGenTextures(1, &m_texture);
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glGenTextures(1, &m_uvTexture);
+    glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Set texture unit bindings
+    glUseProgram(m_shader);
+    glUniform1i(glGetUniformLocation(m_shader, "screenTexture"), 0);
+    glUniform1i(glGetUniformLocation(m_shader, "uvTexture"), 1);
 
     glViewport(0, 0, m_width, m_height);
     return true;
@@ -372,10 +398,26 @@ void DrmEglRenderer::render(const Texture& texture) {
     glUniform1i(m_colorFormatLocation, static_cast<int>(texture.format));
     glUniform1i(m_rotationLocation, m_displayRotation);
 
-    glBindTexture(GL_TEXTURE_2D, m_texture);
-    int uploadWidth = (texture.format == ColorFormat::UYVY) ? texture.width / 2 : texture.width;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uploadWidth, texture.height,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.pixels);
+    if (texture.format == ColorFormat::NV12) {
+        // Y plane: full resolution, single channel
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texture.width, texture.height,
+                     0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels);
+
+        // UV plane: half resolution, two channels (interleaved)
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+        const unsigned char* uvData = texture.pixels + (texture.width * texture.height);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG, texture.width / 2, texture.height / 2,
+                     0, GL_RG, GL_UNSIGNED_BYTE, uvData);
+    } else {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        int uploadWidth = (texture.format == ColorFormat::UYVY) ? texture.width / 2 : texture.width;
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uploadWidth, texture.height,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, texture.pixels);
+    }
 
     glBindVertexArray(m_vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -402,9 +444,20 @@ void DrmEglRenderer::present() {
     auto display = static_cast<EGLDisplay>(m_eglDisplay);
     auto surface = static_cast<EGLSurface>(m_eglSurface);
 
+    // Wait for any pending page flip before proceeding
+    if (m_flipPending) {
+        struct pollfd pfd = { m_drmFd, POLLIN, 0 };
+        poll(&pfd, 1, 200);
+        if (pfd.revents & POLLIN) {
+            drmEventContext evctx = {};
+            evctx.version = 2;
+            drmHandleEvent(m_drmFd, &evctx);
+        }
+        m_flipPending = false;
+    }
+
     eglSwapBuffers(display, surface);
 
-    // Get the front buffer from GBM
     gbm_bo* bo = gbm_surface_lock_front_buffer(m_gbmSurface);
     if (!bo) return;
 
@@ -412,27 +465,23 @@ void DrmEglRenderer::present() {
     uint32_t stride = gbm_bo_get_stride(bo);
     uint32_t fb = 0;
 
-    drmModeAddFB(m_drmFd, m_width, m_height, 24, 32, stride, handle, &fb);
+    if (drmModeAddFB(m_drmFd, m_width, m_height, 24, 32, stride, handle, &fb) != 0) {
+        gbm_surface_release_buffer(m_gbmSurface, bo);
+        return;
+    }
 
     if (m_firstFrame) {
         auto mode = static_cast<drmModeModeInfo*>(m_drmMode);
         drmModeSetCrtc(m_drmFd, m_crtcId, fb, 0, 0, &m_connectorId, 1, mode);
         m_firstFrame = false;
     } else {
-        // Page flip with vsync
-        drmModePageFlip(m_drmFd, m_crtcId, fb, DRM_MODE_PAGE_FLIP_EVENT, nullptr);
-
-        // Wait for flip to complete
-        struct pollfd pfd = { m_drmFd, POLLIN, 0 };
-        poll(&pfd, 1, 100); // 100ms timeout
-        if (pfd.revents & POLLIN) {
-            drmEventContext evctx = {};
-            evctx.version = 2;
-            drmHandleEvent(m_drmFd, &evctx);
+        int ret = drmModePageFlip(m_drmFd, m_crtcId, fb, DRM_MODE_PAGE_FLIP_EVENT, nullptr);
+        if (ret == 0) {
+            m_flipPending = true;
         }
     }
 
-    // Release previous buffer
+    // Release previous buffer after new one is queued
     if (m_prevBo) {
         drmModeRmFB(m_drmFd, m_prevFb);
         gbm_surface_release_buffer(m_gbmSurface, m_prevBo);

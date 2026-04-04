@@ -55,6 +55,7 @@ private:
     unsigned int m_vbo = 0;
     unsigned int m_ebo = 0;
     unsigned int m_texture = 0;
+    unsigned int m_uvTexture = 0;
     int m_colorFormatLocation = -1;
     int m_rotationLocation = -1;
     int m_displayRotation = 0;
@@ -63,6 +64,7 @@ private:
     int m_width = 0;
     int m_height = 0;
     bool m_firstFrame = true;
+    bool m_flipPending = false;
 
     // Vertex data (full-screen quad)
     float m_vertices[20] = {

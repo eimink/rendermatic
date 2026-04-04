@@ -11,6 +11,11 @@ ExecStartPre=/bin/sh -c 'test -e /dev/fb0'
 ExecStart=/rendermatic/rendermatic
 Restart=on-failure
 RestartSec=2
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=80
+Nice=-20
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
 StandardOutput=append:/data/logs/rendermatic.log
 StandardError=append:/data/logs/rendermatic.log
 
