@@ -86,7 +86,7 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     # Firmware (WiFi, Bluetooth, GPU)
     firmware-linux-free firmware-iwlwifi firmware-amd-graphics firmware-misc-nonfree \
     # Utilities
-    wget ca-certificates \
+    wget ca-certificates logrotate \
     && rm -rf /var/lib/apt/lists/*
 
 # DirectFB2 runtime libraries and plugins (not in Debian repos)

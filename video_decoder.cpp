@@ -21,6 +21,7 @@ extern "C" {
 #endif
 #include <unistd.h>
 
+#include "log.h"
 #include <iostream>
 #include <chrono>
 
@@ -451,10 +452,9 @@ void VideoDecoder::decoderLoop() {
             auto now = std::chrono::steady_clock::now();
             if (std::chrono::duration<double>(now - lastDecoderLog).count() >= 5.0) {
                 double elapsed = std::chrono::duration<double>(now - lastDecoderLog).count();
-                std::cout << "Decoder: " << (decodedFrames / elapsed) << " fps"
+                LOG_DEBUG("Decoder: " << (decodedFrames / elapsed) << " fps"
                           << " | pts: " << pts << "s"
-                          << " | queue: " << m_frameQueue.size()
-                          << std::endl;
+                          << " | queue: " << m_frameQueue.size());
                 decodedFrames = 0;
                 lastDecoderLog = now;
             }

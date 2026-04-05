@@ -101,6 +101,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.splashDurationSeconds = root.get("splashDurationSeconds", 5).asInt();
                 config.displayRotation = root.get("displayRotation", 0).asInt();
                 config.targetFps = root.get("targetFps", 60).asInt();
+                config.logLevel = root.get("logLevel", "info").asString();
             }
         }
     } catch (const std::exception& e) {
@@ -145,6 +146,7 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["splashDurationSeconds"] = splashDurationSeconds;
         root["displayRotation"] = displayRotation;
         root["targetFps"] = targetFps;
+        root["logLevel"] = logLevel;
         
         std::ofstream file(path);
         if (!file.is_open()) {

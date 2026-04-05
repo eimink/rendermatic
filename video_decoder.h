@@ -9,8 +9,8 @@
 #include <functional>
 #include <array>
 #include <condition_variable>
-#include <iostream>
 #include <unistd.h>
+#include "log.h"
 #include "texture.h"
 
 // Thread-safe ring buffer for decoded frames with PTS timestamps
@@ -30,10 +30,7 @@ public:
         std::unique_lock<std::mutex> lock(m_mutex);
 
         if (blocking && m_count >= CAPACITY) {
-            static int blockCount = 0;
-            blockCount++;
-            if (blockCount <= 5 || blockCount % 500 == 0)
-                std::cout << "Queue BLOCKING (count=" << m_count << " block#" << blockCount << ")" << std::endl;
+            LOG_DEBUG("Queue BLOCKING (count=" << m_count << ")");
             m_notFull.wait(lock, [this] { return m_count < CAPACITY || m_stopped; });
             if (m_stopped) return;
         } else if (!blocking && m_count >= CAPACITY) {
@@ -55,7 +52,7 @@ public:
         if (m_count < CAPACITY) m_count++;
         m_totalPushed++;
         if (m_totalPushed <= 10 || m_totalPushed % 1000 == 0)
-            std::cout << "Queue push #" << m_totalPushed << " pts=" << pts << " count=" << m_count << " blocking=" << blocking << std::endl;
+            LOG_DEBUG("Queue push #" << m_totalPushed << " pts=" << pts << " count=" << m_count << " blocking=" << blocking);
     }
 
     void stop() {

@@ -1,0 +1,9 @@
+/data/logs/rendermatic.log {
+    size 10M
+    rotate 3
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

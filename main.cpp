@@ -8,6 +8,7 @@
 #include "websocket_server.h"
 #include "splash_controller.h"
 #include "mdns_advertiser.h"
+#include "log.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -44,6 +45,7 @@ int main(int argc, char* argv[]) {
     
     auto config = Configuration::loadFromFile();
     config.overrideFromCommandLine(argc, argv);
+    setLogLevel(parseLogLevel(config.logLevel));
 
     std::unique_ptr<IRenderer> renderer;
 
@@ -220,7 +222,7 @@ int main(int argc, char* argv[]) {
                         videoFrame = firstFrame;
                         mediaClock.sync(0.0);
                         gotFrame = true;
-                        std::cout << "Media clock started" << std::endl;
+                        LOG_INFO("Media clock started");
                     }
                 } else {
                     double t = mediaClock.time();
@@ -240,11 +242,10 @@ int main(int argc, char* argv[]) {
             if (std::chrono::duration<double>(now - lastLog).count() >= 5.0) {
                 double elapsed = std::chrono::duration<double>(now - lastLog).count();
                 double actualFps = frameCount / elapsed;
-                std::cout << "Render: " << actualFps << " fps"
+                LOG_DEBUG("Render: " << actualFps << " fps"
                           << " | clock: " << (mediaClock.started ? mediaClock.time() : -1.0)
                           << "s | frame valid: " << videoFrame.isValid()
-                          << " | active: " << videoDecoder->isActive()
-                          << std::endl;
+                          << " | active: " << videoDecoder->isActive());
                 frameCount = 0;
                 lastLog = now;
             }
