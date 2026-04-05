@@ -1,11 +1,13 @@
 #pragma once
 #include <vector>
+#include <cstdint>
 
 enum class ColorFormat {
     RGBA,
     UYVY,
     UYVA,
-    NV12
+    NV12,
+    DMABUF_NV12  // VA-API DMA-BUF: pixels is unused, dmabuf fields carry the fd
 };
 
 struct Texture {
@@ -62,7 +64,13 @@ struct Texture {
         return *this;
     }
 
-    bool isValid() const { return pixels != nullptr; }
+    // DMA-BUF info for zero-copy VA-API frames
+    int dmaFd = -1;           // DMA-BUF file descriptor
+    uint32_t dmaOffset[2] = {};  // plane offsets (Y, UV)
+    uint32_t dmaPitch[2] = {};   // plane pitches
+    uint32_t dmaFourcc = 0;      // DRM fourcc format
+
+    bool isValid() const { return pixels != nullptr || dmaFd >= 0; }
 
     // Set pixels from owned buffer with proper RAII
     void setOwnedPixels(std::vector<unsigned char>&& data, int w, int h, int ch, ColorFormat fmt) {

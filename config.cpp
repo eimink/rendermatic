@@ -100,6 +100,7 @@ Configuration Configuration::loadFromFile(const std::string& path) {
                 config.authKeyHash = root.get("authKeyHash", "").asString();
                 config.splashDurationSeconds = root.get("splashDurationSeconds", 5).asInt();
                 config.displayRotation = root.get("displayRotation", 0).asInt();
+                config.targetFps = root.get("targetFps", 60).asInt();
             }
         }
     } catch (const std::exception& e) {
@@ -143,6 +144,7 @@ bool Configuration::saveToFile(const std::string& path) const {
         root["authKeyHash"] = authKeyHash;
         root["splashDurationSeconds"] = splashDurationSeconds;
         root["displayRotation"] = displayRotation;
+        root["targetFps"] = targetFps;
         
         std::ofstream file(path);
         if (!file.is_open()) {

@@ -19,6 +19,7 @@ struct Configuration {
     std::string authKeyHash = "";   // SHA-256 hex of auth key; empty = no auth (open mode)
     int splashDurationSeconds = 5;  // Boot overlay duration; 0 = disabled
     int displayRotation = 0;        // Display rotation in degrees (0, 90, 180, 270)
+    int targetFps = 60;             // Render loop target FPS (30 or 60)
 
     static Configuration loadFromFile(const std::string& path = "config.json");
     void overrideFromCommandLine(int argc, char* argv[]);

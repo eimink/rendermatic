@@ -9,12 +9,16 @@
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include <drm_fourcc.h>
 #include <gbm.h>
 
 #define EGL_EGLEXT_PROTOTYPES
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <glad/gl.h>
+
+// EGL image target - defined here to avoid GLES2/gl2ext.h conflicts with desktop GL
+typedef void (*PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)(GLenum target, void* image);
 
 DrmEglRenderer::DrmEglRenderer() {}
 
@@ -398,14 +402,58 @@ void DrmEglRenderer::render(const Texture& texture) {
     glUniform1i(m_colorFormatLocation, static_cast<int>(texture.format));
     glUniform1i(m_rotationLocation, m_displayRotation);
 
-    if (texture.format == ColorFormat::NV12) {
-        // Y plane: full resolution, single channel
+    if (texture.format == ColorFormat::DMABUF_NV12 && texture.dmaFd >= 0) {
+        // Zero-copy VA-API: import DMA-BUF fd as EGL images
+        auto display = static_cast<EGLDisplay>(m_eglDisplay);
+
+        // Destroy previous EGL images
+        auto eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
+        auto eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+        auto glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+
+        if (eglCreateImageKHR && glEGLImageTargetTexture2DOES) {
+            // Y plane EGL image
+            EGLint yAttribs[] = {
+                EGL_WIDTH, texture.width,
+                EGL_HEIGHT, texture.height,
+                EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_R8,
+                EGL_DMA_BUF_PLANE0_FD_EXT, texture.dmaFd,
+                EGL_DMA_BUF_PLANE0_OFFSET_EXT, (EGLint)texture.dmaOffset[0],
+                EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)texture.dmaPitch[0],
+                EGL_NONE
+            };
+            EGLImageKHR yImage = eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, yAttribs);
+            if (yImage) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, m_texture);
+                glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, yImage);
+                eglDestroyImageKHR(display, yImage);
+            }
+
+            // UV plane EGL image
+            EGLint uvAttribs[] = {
+                EGL_WIDTH, texture.width / 2,
+                EGL_HEIGHT, texture.height / 2,
+                EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_GR88,
+                EGL_DMA_BUF_PLANE0_FD_EXT, texture.dmaFd,
+                EGL_DMA_BUF_PLANE0_OFFSET_EXT, (EGLint)texture.dmaOffset[1],
+                EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)texture.dmaPitch[1],
+                EGL_NONE
+            };
+            EGLImageKHR uvImage = eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, nullptr, uvAttribs);
+            if (uvImage) {
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+                glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, uvImage);
+                eglDestroyImageKHR(display, uvImage);
+            }
+        }
+    } else if (texture.format == ColorFormat::NV12) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texture.width, texture.height,
                      0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels);
 
-        // UV plane: half resolution, two channels (interleaved)
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, m_uvTexture);
         const unsigned char* uvData = texture.pixels + (texture.width * texture.height);

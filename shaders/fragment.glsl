@@ -3,7 +3,7 @@ out vec4 FragColor;
 in vec2 TexCoord;
 uniform sampler2D screenTexture;
 uniform sampler2D uvTexture;  // UV plane for NV12
-uniform int colorFormat; // 0=RGBA, 1=UYVY, 2=UYVA, 3=NV12
+uniform int colorFormat; // 0=RGBA, 1=UYVY, 2=UYVA, 3=NV12, 4=DMABUF_NV12
 
 vec4 YUVtoRGB(float Y, float Cb, float Cr) {
     // BT.709 conversion matrix
@@ -61,7 +61,7 @@ void main() {
     else if (colorFormat == 2) { // UYVA
         FragColor = UYVAtoRGBA(screenTexture, TexCoord);
     }
-    else if (colorFormat == 3) { // NV12
+    else if (colorFormat == 3 || colorFormat == 4) { // NV12 or DMABUF_NV12
         FragColor = NV12toRGBA(screenTexture, uvTexture, TexCoord);
     }
     else { // RGBA

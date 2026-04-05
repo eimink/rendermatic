@@ -39,7 +39,7 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     libavformat-dev libavcodec-dev libswscale-dev libavutil-dev \
     libavahi-client-dev \
     libegl-dev libgles-dev libgl-dev \
-    libdrm-dev libgbm-dev \
+    libdrm-dev libgbm-dev libva-dev \
     python3 python3-jinja2 \
     && rm -rf /var/lib/apt/lists/*
 

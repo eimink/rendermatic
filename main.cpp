@@ -9,6 +9,8 @@
 #include "splash_controller.h"
 #include "mdns_advertiser.h"
 #include <iostream>
+#include <chrono>
+#include <thread>
 #include <filesystem>
 #include <libgen.h>
 
@@ -26,6 +28,8 @@
 #endif
 
 int main(int argc, char* argv[]) {
+    std::cout << "--- rendermatic starting ---" << std::endl;
+
     // Change working directory to the executable's directory
     // This allows the app to find shaders, textures, and config.json
     std::string exePath = argv[0];
@@ -161,9 +165,36 @@ int main(int argc, char* argv[]) {
         splashController.trigger(config.splashDurationSeconds);
     }
 
-    // Main loop
+    // Media clock - tracks playback position for file-based content
+    struct MediaClock {
+        double startPts = 0.0;
+        std::chrono::steady_clock::time_point startWall;
+        bool started = false;
+
+        double time() const {
+            if (!started) return 0.0;
+            auto elapsed = std::chrono::steady_clock::now() - startWall;
+            return startPts + std::chrono::duration<double>(elapsed).count();
+        }
+
+        void sync(double pts) {
+            startPts = pts;
+            startWall = std::chrono::steady_clock::now();
+            started = true;
+        }
+
+        void reset() { started = false; }
+    };
+
+    // Main render loop - fixed rate
     Texture videoFrame;
+    MediaClock mediaClock;
+    double m_nextFramePts = 0.0;
+    auto targetFrameTime = std::chrono::microseconds(1000000 / config.targetFps);
+
     while (!renderer->shouldClose()) {
+        auto frameStart = std::chrono::steady_clock::now();
+
         renderer->processInput();
 
         std::string currentName = textureManager.getCurrentTextureName();
@@ -173,14 +204,52 @@ int main(int argc, char* argv[]) {
         }
 
         bool rendered = false;
+        static int frameCount = 0;
+        static auto lastLog = std::chrono::steady_clock::now();
 
 #ifdef HAVE_FFMPEG
         if (videoDecoder && videoDecoder->isActive()) {
-            videoDecoder->getLatestFrame(videoFrame);
-            if (videoFrame.isValid()) {
+            bool gotFrame = false;
+
+            if (videoDecoder->isStream()) {
+                gotFrame = videoDecoder->getLatestFrame(videoFrame);
+            } else {
+                if (!mediaClock.started) {
+                    Texture firstFrame;
+                    if (videoDecoder->getFrameForTime(0.0, firstFrame)) {
+                        videoFrame = firstFrame;
+                        mediaClock.sync(0.0);
+                        gotFrame = true;
+                        std::cout << "Media clock started" << std::endl;
+                    }
+                } else {
+                    double t = mediaClock.time();
+                    gotFrame = videoDecoder->getFrameForTime(t, videoFrame);
+                    videoDecoder->setPlaybackTime(t);
+                }
+            }
+
+            if (gotFrame || videoFrame.isValid()) {
                 renderer->render(videoFrame);
                 rendered = true;
+                frameCount++;
             }
+
+            // Log stats every 5 seconds
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(now - lastLog).count() >= 5.0) {
+                double elapsed = std::chrono::duration<double>(now - lastLog).count();
+                double actualFps = frameCount / elapsed;
+                std::cout << "Render: " << actualFps << " fps"
+                          << " | clock: " << (mediaClock.started ? mediaClock.time() : -1.0)
+                          << "s | frame valid: " << videoFrame.isValid()
+                          << " | active: " << videoDecoder->isActive()
+                          << std::endl;
+                frameCount = 0;
+                lastLog = now;
+            }
+        } else {
+            mediaClock.reset();
         }
 #endif
 
@@ -196,7 +265,6 @@ int main(int argc, char* argv[]) {
             renderer->render(displayTexture);
         }
 
-        // Overlay on top of whatever was rendered
         if (splashController.isActive()) {
             Texture overlay = splashController.getOverlayTexture();
             if (overlay.isValid()) {
@@ -205,6 +273,13 @@ int main(int argc, char* argv[]) {
         }
 
         renderer->present();
+
+        // Fixed frame rate cap
+        auto frameEnd = std::chrono::steady_clock::now();
+        auto elapsed = frameEnd - frameStart;
+        if (elapsed < targetFrameTime) {
+            std::this_thread::sleep_for(targetFrameTime - elapsed);
+        }
     }
 
     ndiReceiver.stop();
