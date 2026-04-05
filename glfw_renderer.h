@@ -35,6 +35,8 @@ private:
     unsigned int shaderProgram;
     unsigned int VBO, VAO, EBO;
     unsigned int texture;
+    unsigned int m_uvTexture = 0;
+    unsigned int m_vTexture = 0;
     int colorFormatLocation;
     int rotationLocation = -1;
     int m_displayRotation = 0;

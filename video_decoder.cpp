@@ -253,14 +253,68 @@ void VideoDecoder::start() {
     if (!m_ff || m_running) return;
     m_running = true;
     m_active = true;
-    m_thread = std::thread(&VideoDecoder::decoderLoop, this);
+    m_packetQueue.reset();
+    m_packetQueue.timeBase = m_timeBase;
+    m_readerThread = std::thread(&VideoDecoder::readerLoop, this);
+    m_decoderThread = std::thread(&VideoDecoder::decoderLoop, this);
 }
 
 void VideoDecoder::stop() {
     m_running = false;
+    m_packetQueue.stop();
     m_frameQueue.stop();
-    if (m_thread.joinable())
-        m_thread.join();
+    if (m_readerThread.joinable())
+        m_readerThread.join();
+    if (m_decoderThread.joinable())
+        m_decoderThread.join();
+}
+
+// --- Packet Queue ---
+void VideoDecoder::PacketQueue::push(AVPacket* pkt) {
+    std::unique_lock<std::mutex> lock(mutex);
+    if (pkt) {
+        // Block if queue is full (backpressure on network read)
+        notFull.wait(lock, [this] { return (int)packets.size() < MAX_PACKETS || stopped; });
+        if (stopped) { av_packet_free(&pkt); return; }
+    }
+    packets.push_back(pkt);
+    notEmpty.notify_one();
+}
+
+AVPacket* VideoDecoder::PacketQueue::pop() {
+    std::unique_lock<std::mutex> lock(mutex);
+    notEmpty.wait(lock, [this] { return !packets.empty() || stopped; });
+    if (stopped && packets.empty()) return nullptr;
+    AVPacket* pkt = packets.front();
+    packets.pop_front();
+    notFull.notify_one();
+    return pkt;
+}
+
+void VideoDecoder::PacketQueue::stop() {
+    std::lock_guard<std::mutex> lock(mutex);
+    stopped = true;
+    for (auto* pkt : packets) { if (pkt) av_packet_free(&pkt); }
+    packets.clear();
+    notEmpty.notify_all();
+    notFull.notify_all();
+}
+
+bool VideoDecoder::PacketQueue::empty() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return packets.empty();
+}
+
+int VideoDecoder::PacketQueue::size() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return (int)packets.size();
+}
+
+void VideoDecoder::PacketQueue::reset() {
+    std::lock_guard<std::mutex> lock(mutex);
+    for (auto* pkt : packets) { if (pkt) av_packet_free(&pkt); }
+    packets.clear();
+    stopped = false;
 }
 
 bool VideoDecoder::getFrameForTime(double mediaTime, Texture& outTexture) {
@@ -296,27 +350,51 @@ VideoDecoder::SourceInfo VideoDecoder::getSourceInfo() const {
     return info;
 }
 
-void VideoDecoder::decoderLoop() {
+// Reader thread: reads packets from FFmpeg into the packet queue.
+// For streams: buffers ahead. For files: reads at decode rate (backpressure from packet queue).
+void VideoDecoder::readerLoop() {
     if (!m_ff) return;
 
-    int w = m_ff->codecCtx->width;
-    int h = m_ff->codecCtx->height;
-    size_t rgbaSize = static_cast<size_t>(w) * h * 4;
-
-    int decodedFrames = 0;
-    auto lastDecoderLog = std::chrono::steady_clock::now();
+    // For streams: pre-buffer before decoder starts consuming
+    if (m_isStream) {
+        LOG_INFO("Stream pre-buffering...");
+        int prebufferPackets = 500; // ~8s of packets - generous pre-buffer for HLS
+        int count = 0;
+        while (m_running && count < prebufferPackets) {
+            AVPacket* pkt = av_packet_alloc();
+            int ret = av_read_frame(m_ff->formatCtx, pkt);
+            if (ret < 0) {
+                av_packet_free(&pkt);
+                if (ret == AVERROR_EOF || ret == AVERROR(EIO)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            if (pkt->stream_index != m_ff->videoStreamIndex) {
+                av_packet_free(&pkt);
+                continue;
+            }
+            m_packetQueue.push(pkt);
+            count++;
+        }
+        LOG_INFO("Pre-buffered " << count << " packets");
+    }
 
     while (m_running) {
-        int ret = av_read_frame(m_ff->formatCtx, m_ff->packet);
+        AVPacket* pkt = av_packet_alloc();
+        int ret = av_read_frame(m_ff->formatCtx, pkt);
         if (ret < 0) {
+            av_packet_free(&pkt);
             if (ret == AVERROR_EOF || ret == AVERROR(EIO)) {
                 if (!m_isStream && m_loop) {
                     av_seek_frame(m_ff->formatCtx, m_ff->videoStreamIndex, 0, AVSEEK_FLAG_BACKWARD);
-                    avcodec_flush_buffers(m_ff->codecCtx);
+                    // Push null packet as flush signal to decoder thread
+                    m_packetQueue.push(nullptr);
                     continue;
                 }
                 if (m_isStream) {
-                    avcodec_flush_buffers(m_ff->codecCtx);
                     std::this_thread::sleep_for(std::chrono::seconds(1));
                     continue;
                 }
@@ -329,16 +407,54 @@ void VideoDecoder::decoderLoop() {
             continue;
         }
 
-        if (m_ff->packet->stream_index != m_ff->videoStreamIndex) {
-            av_packet_unref(m_ff->packet);
+        if (pkt->stream_index != m_ff->videoStreamIndex) {
+            av_packet_free(&pkt);
             continue;
         }
 
-        ret = avcodec_send_packet(m_ff->codecCtx, m_ff->packet);
-        av_packet_unref(m_ff->packet);
-        if (ret < 0) continue;
+        m_packetQueue.push(pkt); // blocks if queue full
+    }
+}
+
+// Decoder thread: pulls packets from queue, decodes, pushes frames to frame queue.
+void VideoDecoder::decoderLoop() {
+    if (!m_ff) return;
+    LOG_INFO("Decoder thread started, waiting for packets...");
+
+    int w = m_ff->codecCtx->width;
+    int h = m_ff->codecCtx->height;
+    size_t rgbaSize = static_cast<size_t>(w) * h * 4;
+
+    int decodedFrames = 0;
+    auto lastDecoderLog = std::chrono::steady_clock::now();
+
+    while (m_running) {
+        AVPacket* pkt = m_packetQueue.pop();
+        static int popCount = 0;
+        popCount++;
+        if (popCount <= 3) LOG_INFO("Decoder got packet #" << popCount << " pkt=" << (void*)pkt << " qsize=" << m_packetQueue.size());
+        if (!pkt) {
+            if (!m_running) break;
+            // Null packet = flush signal (file loop seek)
+            avcodec_flush_buffers(m_ff->codecCtx);
+            m_ff->firstPts = -1.0;
+            continue;
+        }
+
+        int ret = avcodec_send_packet(m_ff->codecCtx, pkt);
+        av_packet_free(&pkt);
+        if (ret < 0) {
+            static int errCount = 0;
+            errCount++;
+            if (errCount <= 5)
+                LOG_WARN("avcodec_send_packet error: " << ret);
+            continue;
+        }
 
         while (avcodec_receive_frame(m_ff->codecCtx, m_ff->frame) == 0) {
+            static int frameNum = 0;
+            frameNum++;
+            if (frameNum <= 5) LOG_INFO("Decoded frame #" << frameNum << " format=" << m_ff->frame->format);
             // Calculate PTS in seconds, normalized to start from 0
             double pts = 0.0;
             if (m_ff->frame->pts != AV_NOPTS_VALUE) {
@@ -413,40 +529,65 @@ void VideoDecoder::decoderLoop() {
             }
 #endif
 
-            // Software decode: sws_scale to RGBA
+            // Software decode: pass YUV420P directly to GL shader (no sws_scale)
             AVFrame* srcFrame = m_ff->frame;
 
-            if (srcFrame->format != m_ff->lastPixFmt) {
-                if (m_ff->swsCtx) sws_freeContext(m_ff->swsCtx);
-                m_ff->swsCtx = sws_getContext(
-                    w, h, (AVPixelFormat)srcFrame->format,
-                    w, h, AV_PIX_FMT_RGBA,
-                    SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
-                m_ff->lastPixFmt = srcFrame->format;
-            }
+            if (srcFrame->format == AV_PIX_FMT_YUV420P) {
+                // Convert planar YUV420P to Y + interleaved UV (NV12-like layout).
+                // This avoids needing a third texture which macOS GL driver optimizes out.
+                // Layout: Y(w*h) + UV interleaved (w/2 * h/2 * 2)
+                size_t ySize = (size_t)w * h;
+                size_t uvSize = (size_t)(w / 2) * (h / 2) * 2; // interleaved UV pairs
+                std::vector<unsigned char> pixels(ySize + uvSize);
 
-            if (!m_ff->swsCtx) continue;
-
-            sws_scale(m_ff->swsCtx,
-                      srcFrame->data, srcFrame->linesize,
-                      0, h,
-                      m_ff->rgbaFrame->data, m_ff->rgbaFrame->linesize);
-
-            std::vector<unsigned char> pixels(rgbaSize);
-            int dstStride = w * 4;
-            if (m_ff->rgbaFrame->linesize[0] == dstStride) {
-                memcpy(pixels.data(), m_ff->rgbaFrame->data[0], rgbaSize);
-            } else {
-                for (int y = 0; y < h; y++) {
-                    memcpy(pixels.data() + y * dstStride,
-                           m_ff->rgbaFrame->data[0] + y * m_ff->rgbaFrame->linesize[0],
-                           dstStride);
+                // Y plane
+                for (int y = 0; y < h; y++)
+                    memcpy(pixels.data() + y * w, srcFrame->data[0] + y * srcFrame->linesize[0], w);
+                // Interleave U and V into NV12-style UV plane
+                unsigned char* uvDst = pixels.data() + ySize;
+                for (int y = 0; y < h / 2; y++) {
+                    const unsigned char* uRow = srcFrame->data[1] + y * srcFrame->linesize[1];
+                    const unsigned char* vRow = srcFrame->data[2] + y * srcFrame->linesize[2];
+                    for (int x = 0; x < w / 2; x++) {
+                        *uvDst++ = uRow[x];
+                        *uvDst++ = vRow[x];
+                    }
                 }
-            }
 
-            Texture rgbaTex;
-            rgbaTex.setOwnedPixels(std::move(pixels), w, h, 4, ColorFormat::RGBA);
-            m_frameQueue.push(pts, std::move(rgbaTex));
+                Texture nv12Tex;
+                nv12Tex.setOwnedPixels(std::move(pixels), w, h, 1, ColorFormat::NV12);
+                m_frameQueue.push(pts, std::move(nv12Tex));
+            } else {
+                // Non-YUV420P: fall back to sws_scale to RGBA
+                if (srcFrame->format != m_ff->lastPixFmt) {
+                    if (m_ff->swsCtx) sws_freeContext(m_ff->swsCtx);
+                    m_ff->swsCtx = sws_getContext(
+                        w, h, (AVPixelFormat)srcFrame->format,
+                        w, h, AV_PIX_FMT_RGBA,
+                        SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+                    m_ff->lastPixFmt = srcFrame->format;
+                }
+                if (!m_ff->swsCtx) continue;
+
+                sws_scale(m_ff->swsCtx,
+                          srcFrame->data, srcFrame->linesize,
+                          0, h,
+                          m_ff->rgbaFrame->data, m_ff->rgbaFrame->linesize);
+
+                std::vector<unsigned char> pixels(rgbaSize);
+                int dstStride = w * 4;
+                if (m_ff->rgbaFrame->linesize[0] == dstStride) {
+                    memcpy(pixels.data(), m_ff->rgbaFrame->data[0], rgbaSize);
+                } else {
+                    for (int y = 0; y < h; y++)
+                        memcpy(pixels.data() + y * dstStride,
+                               m_ff->rgbaFrame->data[0] + y * m_ff->rgbaFrame->linesize[0], dstStride);
+                }
+
+                Texture rgbaTex;
+                rgbaTex.setOwnedPixels(std::move(pixels), w, h, 4, ColorFormat::RGBA);
+                m_frameQueue.push(pts, std::move(rgbaTex));
+            } // end else (non-YUV420P)
 
             decodedFrames++;
             auto now = std::chrono::steady_clock::now();

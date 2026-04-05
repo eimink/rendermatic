@@ -2,20 +2,18 @@
 out vec4 FragColor;
 in vec2 TexCoord;
 uniform sampler2D screenTexture;
-uniform sampler2D uvTexture;  // UV plane for NV12
-uniform int colorFormat; // 0=RGBA, 1=UYVY, 2=UYVA, 3=NV12, 4=DMABUF_NV12
+uniform sampler2D uvTexture;
+uniform int colorFormat; // 0=RGBA, 1=UYVY, 2=UYVA, 3=NV12, 5=DMABUF_NV12
 
-vec4 YUVtoRGB(float Y, float Cb, float Cr) {
-    // BT.709 conversion matrix
+vec4 YUVtoRGB(float Y, float U, float V) {
+    // BT.601 full-range conversion matrix
+    // Handles both TV range (16-235) and full range (0-255) streams
+    // by using the matrix that maps directly without range scaling.
+    vec3 yuv = vec3(Y, U - 0.5, V - 0.5);
     vec3 rgb;
-    Y = 1.164383561643836 * (Y - 0.0625);
-    Cb = Cb - 0.5;
-    Cr = Cr - 0.5;
-    
-    rgb.r = Y + 1.792741071428571 * Cr;
-    rgb.g = Y - 0.532909328559444 * Cr - 0.213248614273730 * Cb;
-    rgb.b = Y + 2.112401785714286 * Cb;
-    
+    rgb.r = yuv.x + 1.402 * yuv.z;
+    rgb.g = yuv.x - 0.344136 * yuv.y - 0.714136 * yuv.z;
+    rgb.b = yuv.x + 1.772 * yuv.y;
     return vec4(clamp(rgb, 0.0, 1.0), 1.0);
 }
 
@@ -61,7 +59,7 @@ void main() {
     else if (colorFormat == 2) { // UYVA
         FragColor = UYVAtoRGBA(screenTexture, TexCoord);
     }
-    else if (colorFormat == 3 || colorFormat == 4) { // NV12 or DMABUF_NV12
+    else if (colorFormat == 3 || colorFormat == 5) { // NV12 or DMABUF_NV12
         FragColor = NV12toRGBA(screenTexture, uvTexture, TexCoord);
     }
     else { // RGBA

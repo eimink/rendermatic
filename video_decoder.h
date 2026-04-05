@@ -8,15 +8,18 @@
 #include <memory>
 #include <functional>
 #include <array>
+#include <deque>
 #include <condition_variable>
 #include <unistd.h>
 #include "log.h"
 #include "texture.h"
 
+struct AVPacket;
+
 // Thread-safe ring buffer for decoded frames with PTS timestamps
 class FrameQueue {
 public:
-    static constexpr int CAPACITY = 120; // ~2s at 60fps
+    static constexpr int CAPACITY = 180; // ~3s at 60fps - covers HLS segment gaps
 
     struct Entry {
         double pts = 0.0;
@@ -161,7 +164,13 @@ public:
         return m_count;
     }
 
-    // Get PTS of the newest frame (for media clock sync)
+    double oldestPts() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_count == 0) return -1.0;
+        int idx = (m_writeIdx - m_count + CAPACITY) % CAPACITY;
+        return m_buffer[idx].pts;
+    }
+
     double newestPts() const {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_count == 0) return 0.0;
@@ -199,6 +208,8 @@ public:
 
     bool isActive() const;
     bool isStream() const { return m_isStream; }
+    int queueSize() const { return m_frameQueue.size(); }
+    double oldestPts() const { return m_frameQueue.oldestPts(); }
     void setPlaybackTime(double t) { m_playbackTime.store(t); }
 
     void setLoop(bool loop) { m_loop = loop; }
@@ -220,19 +231,41 @@ public:
     double timeBase() const { return m_timeBase; }
 
 private:
-    void decoderLoop();
+    void readerLoop();   // reads packets from FFmpeg into packet queue
+    void decoderLoop();  // decodes packets into frame queue
 
     struct FFmpegContext;
     std::unique_ptr<FFmpegContext> m_ff;
 
-    std::thread m_thread;
+    std::thread m_readerThread;
+    std::thread m_decoderThread;
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_active{false};
+
+    // Packet queue between reader and decoder
+    struct PacketQueue {
+        static constexpr int MAX_PACKETS = 1000; // compressed packet buffer
+        std::deque<AVPacket*> packets;
+        mutable std::mutex mutex;
+        std::condition_variable notEmpty;
+        std::condition_variable notFull;
+        bool stopped = false;
+        double bufferedDuration = 0.0;
+        double timeBase = 0.0;
+
+        void push(AVPacket* pkt);
+        AVPacket* pop();
+        void stop();
+        void reset();
+        bool empty() const;
+        int size() const;
+    };
+    PacketQueue m_packetQueue;
 
     FrameQueue m_frameQueue;
     double m_timeBase = 0.0;
     bool m_isStream = false;
-    std::atomic<double> m_playbackTime{0.0}; // set by render loop
+    std::atomic<double> m_playbackTime{0.0};
 
     std::string m_source;
     bool m_loop = true;

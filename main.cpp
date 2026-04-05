@@ -214,8 +214,34 @@ int main(int argc, char* argv[]) {
             bool gotFrame = false;
 
             if (videoDecoder->isStream()) {
-                gotFrame = videoDecoder->getLatestFrame(videoFrame);
+                // Streams: consume from queue with adaptive rate.
+                // When buffer is healthy, consume one per tick.
+                // When buffer is low, skip consumption to let it refill.
+                static int skipCounter = 0;
+                int queueSize = videoDecoder->queueSize();
+
+                bool shouldConsume = true;
+                if (queueSize < 15) {
+                    // Very low - show every frame twice (half rate)
+                    skipCounter++;
+                    shouldConsume = (skipCounter % 2 == 0);
+                } else if (queueSize < 30) {
+                    // Low - skip every 4th consume
+                    skipCounter++;
+                    shouldConsume = (skipCounter % 4 != 0);
+                } else {
+                    skipCounter = 0;
+                }
+
+                if (shouldConsume) {
+                    Texture nextFrame;
+                    if (videoDecoder->getNext(nextFrame)) {
+                        videoFrame = nextFrame;
+                        gotFrame = true;
+                    }
+                }
             } else {
+                // File playback: PTS-based timing via media clock
                 if (!mediaClock.started) {
                     Texture firstFrame;
                     if (videoDecoder->getFrameForTime(0.0, firstFrame)) {

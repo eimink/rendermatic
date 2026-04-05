@@ -387,10 +387,15 @@ bool DrmEglRenderer::initGl() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // Set texture unit bindings
+    glGenTextures(1, &m_vTexture);
+    glBindTexture(GL_TEXTURE_2D, m_vTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
     glUseProgram(m_shader);
     glUniform1i(glGetUniformLocation(m_shader, "screenTexture"), 0);
     glUniform1i(glGetUniformLocation(m_shader, "uvTexture"), 1);
+    glUniform1i(glGetUniformLocation(m_shader, "vTexture"), 2);
 
     glViewport(0, 0, m_width, m_height);
     return true;
@@ -448,6 +453,24 @@ void DrmEglRenderer::render(const Texture& texture) {
                 eglDestroyImageKHR(display, uvImage);
             }
         }
+    } else if (texture.format == ColorFormat::YUV420P) {
+        size_t ySize = (size_t)texture.width * texture.height;
+        size_t uvPlaneSize = (size_t)(texture.width / 2) * (texture.height / 2);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texture.width, texture.height,
+                     0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texture.width / 2, texture.height / 2,
+                     0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels + ySize);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, m_vTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, texture.width / 2, texture.height / 2,
+                     0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels + ySize + uvPlaneSize);
     } else if (texture.format == ColorFormat::NV12) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_texture);

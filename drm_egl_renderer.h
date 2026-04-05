@@ -56,6 +56,7 @@ private:
     unsigned int m_ebo = 0;
     unsigned int m_texture = 0;
     unsigned int m_uvTexture = 0;
+    unsigned int m_vTexture = 0;
     int m_colorFormatLocation = -1;
     int m_rotationLocation = -1;
     int m_displayRotation = 0;

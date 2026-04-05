@@ -7,6 +7,7 @@ enum class ColorFormat {
     UYVY,
     UYVA,
     NV12,
+    YUV420P,     // Planar YUV: Y + U + V separate planes
     DMABUF_NV12  // VA-API DMA-BUF: pixels is unused, dmabuf fields carry the fd
 };
 

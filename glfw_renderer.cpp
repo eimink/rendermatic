@@ -61,11 +61,36 @@ bool GLFWRenderer::init(int width, int height, const char* title, bool fullscree
     if (!createShaders()) return false;
     if (!setupBuffers()) return false;
 
-    // Create texture
+    // Create textures (main + U/UV + V for YUV formats)
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Initialize UV/V textures with 1x1 dummy data so the driver
+    // doesn't mark them as unloadable before real data arrives.
+    unsigned char dummy = 128;
+
+    glGenTextures(1, &m_uvTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &dummy);
+
+    glGenTextures(1, &m_vTexture);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_vTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, &dummy);
+
+    glActiveTexture(GL_TEXTURE0);
+
+    glUseProgram(shaderProgram);
+    glUniform1i(glGetUniformLocation(shaderProgram, "screenTexture"), 0);
+    glUniform1i(glGetUniformLocation(shaderProgram, "uvTexture"), 1);
+    glUniform1i(glGetUniformLocation(shaderProgram, "vTexture"), 2);
 
     return true;
 }
@@ -75,11 +100,32 @@ void GLFWRenderer::render(const Texture& texture) {
     glUseProgram(shaderProgram);
     glUniform1i(colorFormatLocation, static_cast<int>(texture.format));
     glUniform1i(rotationLocation, m_displayRotation);
-    
-    glBindTexture(GL_TEXTURE_2D, this->texture);
-    int uploadWidth = (texture.format == ColorFormat::UYVY) ? texture.width / 2 : texture.width;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uploadWidth, texture.height,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.pixels);
+
+    if (texture.format == ColorFormat::NV12) {
+        // NV12: Y plane (full res, single channel) + UV interleaved (half res, two channels)
+        size_t ySize = (size_t)texture.width * texture.height;
+
+        glUniform1i(glGetUniformLocation(shaderProgram, "screenTexture"), 0);
+        glUniform1i(glGetUniformLocation(shaderProgram, "uvTexture"), 1);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, this->texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, texture.width, texture.height,
+                     0, GL_RED, GL_UNSIGNED_BYTE, texture.pixels);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, m_uvTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, texture.width / 2, texture.height / 2,
+                     0, GL_RG, GL_UNSIGNED_BYTE, texture.pixels + ySize);
+    } else {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, this->texture);
+        int uploadWidth = (texture.format == ColorFormat::UYVY) ? texture.width / 2 : texture.width;
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uploadWidth, texture.height,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, texture.pixels);
+    }
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
