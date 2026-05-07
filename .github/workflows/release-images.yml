@@ -8,12 +8,15 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-arm64:
     name: Build aarch64 images (RPi + generic)
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build RPi image
         run: sh image/build.sh rpi
@@ -31,7 +34,7 @@ jobs:
     name: Build x86_64 image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build x86_64 image
         run: sh image/build.sh x86_64
@@ -47,7 +50,7 @@ jobs:
     needs: [build-arm64, build-x86_64]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4

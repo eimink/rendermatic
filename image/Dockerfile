@@ -74,7 +74,7 @@ RUN rm -f /etc/apt/sources.list.d/*.sources && \
     # FFmpeg runtime
     libavformat61 libavcodec61 libswscale8 libavutil59 \
     # VA-API hardware video decode (Intel/AMD)
-    libva2 libva-drm2 mesa-va-drivers intel-media-va-driver \
+    libva2 libva-drm2 mesa-va-drivers \
     # mDNS discovery
     avahi-daemon avahi-utils libavahi-client3 dbus \
     # Network
@@ -101,7 +101,7 @@ RUN mkdir -p /etc/initramfs-tools && \
         printf "virtio_pci\nvirtio_blk\nvirtio_net\next4\nnvme\nahci\n" > /etc/initramfs-tools/modules; \
     fi
 
-# Install target-specific kernel
+# Install target-specific kernel and VA-API drivers
 # DRACUT_NO_XATTR suppresses harmless xattr warnings from mkinitramfs in containers
 RUN export DRACUT_NO_XATTR=1 && apt-get update && \
     if [ "$TARGET" = "rpi" ]; then \
@@ -109,7 +109,8 @@ RUN export DRACUT_NO_XATTR=1 && apt-get update && \
             linux-image-arm64 raspi-firmware; \
     elif [ "$TARGET" = "x86_64" ]; then \
         apt-get install -y --no-install-recommends \
-            linux-image-amd64 initramfs-tools; \
+            linux-image-amd64 initramfs-tools \
+            intel-media-va-driver; \
     else \
         apt-get install -y --no-install-recommends \
             linux-image-arm64 initramfs-tools; \
